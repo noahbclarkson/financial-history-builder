@@ -1,185 +1,239 @@
-# Financial History Builder
+# financial-history-builder
 
-A Rust library for converting sparse financial data (extracted from PDFs/documents via LLM) into dense monthly time series with mathematical integrity and automatic accounting equation balancing.
+[![Crates.io](https://img.shields.io/crates/v/financial-history-builder.svg)](https://crates.io/crates/financial-history-builder)
+[![Documentation](https://docs.rs/financial-history-builder/badge.svg)](https://docs.rs/financial-history-builder)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
 
-## 🎯 Purpose
+**A rigorous mathematical engine for converting sparse financial data (annual reports, PDF extractions) into dense, mathematically consistent monthly time series.**
 
-This crate acts as a bridge between unstructured text/PDF data (via AI/LLM) and the rigorous mathematical requirements of financial forecasting engines. It transforms a few annual data points into complete monthly time series while:
+---
 
-- ✅ Maintaining mathematical accuracy (sums match exactly)
-- ✅ Adding realistic variance through controlled noise
-- ✅ Enforcing accounting integrity (Assets = Liabilities + Equity)
-- ✅ Applying industry-specific seasonality patterns
+## 🎯 The Problem
 
-## 🚀 Features
+When extracting financial data from documents (via LLMs or OCR), you often get **sparse** data:
 
-- **Smart Interpolation**: Multiple methods (linear, step, curve, seasonal) for different account types
-- **Seasonality Profiles**: Pre-built patterns for retail, SaaS, hospitality, and custom patterns
-- **Accounting Enforcement**: Automatic balancing to ensure Assets = Liabilities + Equity
-- **Realistic Noise**: Configurable variance to make synthetic data look organic
-- **JSON Schema**: Detailed schemars integration for AI/LLM consumption
-- **Flow vs Stock**: Proper handling of P&L (period totals) vs Balance Sheet (point-in-time) accounts
+* *"Revenue was \$1.2M in 2023"* (A single number for 12 months)
+* *"Cash on Dec 31 was \$50k"* (A single snapshot)
+* *"Q1 Expenses were \$30k"* (A period total)
+
+To build a financial forecast, you need **dense** data: a specific value for every single month.
+
+## 💡 The Solution
+
+`financial-history-builder` fills the gaps between these numbers using two distinct mathematical models, applies industry-specific seasonality, adds realistic variance (noise), and ensures the accounting equation (`Assets = Liabilities + Equity`) balances perfectly every month.
+
+### Key Features
+
+* **Hierarchical Constraint Solving:** Handles overlapping periods (e.g., specific Q1 data + total Annual data) by locking detailed data first and distributing the remainder.
+* **Smart Interpolation:** Generates monthly balance sheet positions using Linear, Step, or Catmull-Rom Spline interpolation.
+* **Seasonality Profiles:** Applies realistic curves (Retail Peak, SaaS Growth, Summer High) to distribute revenue/expenses accurately.
+* **Accounting Integrity:** Automatically enforces $Assets = Liabilities + Equity$ by calculating a balancing plug (usually Cash or Equity).
+* **LLM Ready:** Generates strict JSON Schemas (`schemars`) to force AI models (Gemini, GPT-4) to output data in the exact format the engine requires.
+
+---
 
 ## 📦 Installation
 
-Add to your `Cargo.toml`:
+Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 financial-history-builder = "0.1.0"
 ```
 
-## 🔧 Basic Usage
+---
+
+## 📐 Mathematical Models
+
+This library treats the **Income Statement** and **Balance Sheet** as fundamentally different mathematical objects.
+
+### 1. Income Statement: The "Bucket Filling" Model
+
+Income statement items (Revenue, Expenses) are **flows**. The engine uses a **Hierarchical Constraint Solver**.
+
+Given a set of constraints $C = \{c_1, c_2, ...\}$ where each constraint has a time range $[t_{start}, t_{end}]$ and a value $V$:
+
+1. **Sort Constraints:** Smallest time ranges (e.g., "February") are processed first. Largest (e.g., "2023 Full Year") are processed last.
+2. **Locking:** When a small period is solved, those months are "locked."
+3. **Distribution:** For a larger period, the engine calculates the **Remaining Value**:
+    $$V_{remaining} = V_{total} - \sum V_{locked}$$
+4. **Seasonality Weighting:** The remaining value is distributed among the *unlocked* months based on the account's Seasonality Profile ($w_m$):
+    $$Value_m = V_{remaining} \times \frac{w_m}{\sum_{i \in Unlocked} w_i}$$
+
+> **Example:**
+>
+> * Annual Revenue: \$120,000
+> * Known February Revenue: \$2,000
+> * **Result:** February is locked at \$2,000. The remaining \$118,000 is distributed across the other 11 months according to the seasonality curve.
+
+### 2. Balance Sheet: The "Curve Fitting" Model
+
+Balance sheet items (Assets, Liabilities) are **stocks** (snapshots). The engine uses **Interpolation**.
+
+Given a set of snapshots $S = \{(t_1, v_1), (t_2, v_2), ...\}$:
+
+* **Linear:** $f(t) = mt + c$ (Steady growth/decline)
+* **Step:** $f(t) = v_i$ for $t_i \le t < t_{i+1}$ (Fixed costs, share capital)
+* **Curve:** Uses **Catmull-Rom Splines** to create smooth, organic transitions between points, ensuring the line passes through every snapshot exactly.
+
+### 3. The Accounting Equation Enforcer
+
+For every generated month $t$:
+
+$$Assets_t = Liabilities_t + Equity_t$$
+
+The engine sums all known accounts. It then calculates the discrepancy and adjusts the designated `is_balancing_account` (usually "Cash at Bank" or "Retained Earnings") to force the equation to zero.
+
+---
+
+## 🚀 Usage Example
+
+### Basic Rust Implementation
 
 ```rust
 use financial_history_builder::*;
 use chrono::NaiveDate;
 
 fn main() -> Result<()> {
-    // Define sparse financial history
-    let history = SparseFinancialHistory {
-        organization_name: "ACME Corp".to_string(),
+    // 1. Define the configuration
+    let config = FinancialHistoryConfig {
+        organization_name: "ACME SaaS Inc".to_string(),
         fiscal_year_end_month: 12,
-        accounts: vec![
-            SparseAccount {
-                name: "Sales Revenue".to_string(),
-                account_type: AccountType::Revenue,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Seasonal {
-                    profile_id: SeasonalityProfileId::RetailPeak,
-                },
-                noise_factor: Some(0.05),
-                anchors: vec![
-                    AnchorPoint {
+        // Balance Sheet: Snapshots
+        balance_sheet: vec![
+            BalanceSheetAccount {
+                name: "Cash at Bank".to_string(),
+                account_type: AccountType::Asset,
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 150_000.0,
+                    }
+                ],
+                is_balancing_account: true, // <--- Auto-calculates this
+                noise_factor: None,
+            },
+        ],
+        // Income Statement: Period Constraints
+        income_statement: vec![
+            IncomeStatementAccount {
+                name: "Subscription Revenue".to_string(),
+                account_type: AccountType::Revenue,
+                seasonality_profile: SeasonalityProfileId::SaasGrowth,
+                constraints: vec![
+                    // Constraint 1: Full Year
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 1_200_000.0,
                     },
+                    // Constraint 2: Specific Q4 bump
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 10, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 400_000.0, 
+                    }
                 ],
+                noise_factor: Some(0.05), // Add 5% random noise
             },
         ],
     };
 
-    // Process into dense monthly data
-    let dense_data = process_financial_history(&history)?;
+    // 2. Process into dense time series
+    let dense_data = process_financial_history(&config)?;
 
-    // Verify accounting equation holds
-    verify_accounting_equation(&history, &dense_data, 1.0)?;
+    // 3. Access data (BTreeMap<String, BTreeMap<NaiveDate, f64>>)
+    let revenue = dense_data.get("Subscription Revenue").unwrap();
+    
+    println!("Monthly Revenue:");
+    for (date, value) in revenue {
+        println!("{}: ${:.2}", date, value);
+    }
 
     Ok(())
 }
 ```
 
-## 📊 Core Concepts
+---
 
-### Account Types
+## 🤖 AI & LLM Integration
 
-- **Revenue**: Income from sales/services (Income Statement, credit)
-- **CostOfSales**: Direct production costs (Income Statement, debit)
-- **OperatingExpense**: Operating costs like rent, salaries (Income Statement, debit)
-- **OtherIncome**: Non-operating income (Income Statement, credit)
-- **Asset**: Resources owned (Balance Sheet, debit)
-- **Liability**: Obligations owed (Balance Sheet, credit)
-- **Equity**: Owner's interest (Balance Sheet, credit)
+This library is designed to work as the backend for AI extraction agents (like GPT-4o or Gemini 1.5 Pro).
 
-### Account Behaviors
+### 1. Generate Schema for LLM
 
-- **Flow**: Represents activity over a period (e.g., Revenue, Expenses)
-  - Anchor value = total for the period
-  - Distributed across months based on interpolation method
-
-- **Stock**: Represents snapshot at a point in time (e.g., Cash, Accounts Receivable)
-  - Anchor value = balance on that specific date
-  - Interpolated between anchor dates
-
-### Interpolation Methods
-
-1. **Linear**: Steady progression between points
-   - Use for: General growth, gradual changes
-
-2. **Step**: Value holds constant until changed
-   - Use for: Fixed costs (rent, insurance, subscriptions)
-
-3. **Curve**: Smooth Catmull-Rom interpolation
-   - Use for: Organic balance sheet changes
-
-4. **Seasonal**: Distribute based on predefined patterns
-   - `Flat`: Even 8.33% per month
-   - `RetailPeak`: Low Jan-Nov, 30%+ spike in December
-   - `SummerHigh`: Tourism pattern, high Q2/Q3
-   - `SaasGrowth`: Back-loaded growth (month 1: 6%, month 12: 10%)
-   - `Custom([f64; 12])`: Your own monthly weights (must sum to 1.0)
-
-### Noise Factors
-
-Add realistic variation to synthetic data:
-
-- `0.0` - No noise (fixed costs like rent)
-- `0.01-0.02` - Very stable (balance sheet accounts, fixed salaries)
-- `0.03-0.05` - Normal variation (most revenues and variable expenses)
-- `0.06-0.10` - High variation (marketing, seasonal items)
-
-## 🧪 Testing
-
-Run the comprehensive test suite:
-
-```bash
-cargo test
-```
-
-This will:
-- Run all unit tests
-- Execute integration tests for retail, SaaS, and hospitality businesses
-- Generate CSV outputs for inspection:
-  - `test_retail_business.csv`
-  - `test_saas_startup.csv`
-  - `test_hospitality_business.csv`
-  - `test_custom_seasonality.csv`
-- Generate `schema_output.json` with the complete JSON schema
-
-## 🤖 AI Integration
-
-This library is designed to work seamlessly with LLMs like Gemini 2.5 Pro. See [`GEMINI_PROMPT_EXAMPLE.md`](GEMINI_PROMPT_EXAMPLE.md) for a comprehensive prompt that instructs an AI to extract financial data from documents and output in the correct JSON format.
-
-### Generate JSON Schema for LLM
+You can generate a strict JSON schema to include in your system prompt. This ensures the LLM outputs JSON that maps **perfectly** to the Rust structs.
 
 ```rust
-use financial_history_builder::SparseFinancialHistory;
+use financial_history_builder::FinancialHistoryConfig;
 
-// Get the JSON schema
-let schema_json = SparseFinancialHistory::schema_as_json().unwrap();
-println!("{}", schema_json);
+fn main() {
+    // Prints the JSON schema definition
+    println!("{}", FinancialHistoryConfig::schema_as_json().unwrap());
+}
 ```
 
-This schema can be provided to the LLM to ensure it outputs data in the exact format this library expects.
+### 2. Example Prompt
 
-## 📈 Accounting Integrity
-
-The library automatically enforces the fundamental accounting equation:
-
-```
-Assets = Liabilities + Equity
-```
-
-When you call `process_financial_history()`, it will:
-
-1. Densify all accounts into monthly time series
-2. Calculate Assets, Liabilities, and existing Equity for each month
-3. Create a "Balancing Equity Adjustment" account to ensure the equation holds
-4. Verify the equation is balanced within tolerance
-
-## ⚠️ Important Notes
-
-1. **Flow accounts** must have anchors that represent period **end dates** (e.g., 2023-12-31 for FY2023)
-2. **Stock accounts** must have anchors that represent **snapshot dates** (e.g., 2023-12-31 for Dec 31 balance)
-3. The sum of monthly flow values will **exactly** match the annual anchor (accounting integrity)
-4. Stock accounts will **exactly** match anchor values on anchor dates
-5. Noise is added proportionally and then re-normalized to maintain exact sums
-6. The accounting equation is automatically balanced via an equity adjustment account
-
-## 📄 License
-
-MIT
+See [GEMINI_PROMPT_EXAMPLE.md](GEMINI_PROMPT_EXAMPLE.md) for a production-ready system prompt that teaches an LLM how to extract data specifically for this engine (handling opening balances, overlapping periods, etc.).
 
 ---
 
-**Built with ❤️ for the financial technology community**
+## ⚙️ Configuration Options
+
+### Seasonality Profiles
+
+When defining Income Statement accounts, you can select a profile to control how annual totals are distributed:
+
+| Profile      | Description                                                         |
+| :----------- | :------------------------------------------------------------------ |
+| `Flat`       | Even distribution (8.33% per month). Used for rent, fixed salaries. |
+| `RetailPeak` | Low Jan-Nov, massive spike (30%+) in December.                      |
+| `SummerHigh` | High Q2/Q3, low Q1/Q4. Good for tourism/hospitality.                |
+| `SaasGrowth` | Back-loaded linear growth. Month 12 is higher than Month 1.         |
+| `Custom`     | Provide your own `Vec<f64>` of 12 weights summing to 1.0.           |
+
+### Interpolation Methods
+
+For Balance Sheet accounts:
+
+| Method   | Description                                                                      |
+| :------- | :------------------------------------------------------------------------------- |
+| `Linear` | Straight line between points. Good for loans, receivables.                       |
+| `Step`   | Holds value constant until the next snapshot. Good for Share Capital.            |
+| `Curve`  | Catmull-Rom spline. Good for organic accounts (e.g., Retained Earnings history). |
+
+### Noise Factors
+
+To make synthetic monthly data look realistic, you can inject Gaussian noise.
+
+* `0.0`: No noise (Rent).
+* `0.02`: Low noise (Salaries).
+* `0.05 - 0.10`: High noise (Marketing spend, incidental expenses).
+
+*Note: The engine automatically re-normalizes after adding noise to ensure the sum still exactly matches the anchor constraint.*
+
+---
+
+## 🏗️ Directory Structure
+
+```text
+financial-history-builder
+├── examples
+│   ├── gemini_extraction.rs   # Full AI extraction workflow
+│   ├── intra_year_demo.rs     # Demonstrates overlapping period logic
+│   └── debug_test.rs          # Simple manual test
+├── src
+│   ├── balancer.rs            # Accounting equation logic
+│   ├── engine.rs              # Core mathematical densifier
+│   ├── seasonality.rs         # Seasonality weight definitions
+│   └── schema.rs              # Structs and JSON Schema generation
+├── GEMINI_PROMPT_EXAMPLE.md   # Prompt engineering guide
+└── Cargo.toml
+```
+
+---
+
+**Built for financial modeling.** Ensures that even when data is invented (interpolated), it remains mathematically and accountingly sound.
