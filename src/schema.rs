@@ -95,7 +95,9 @@ pub enum InterpolationMethod {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BalanceSheetAccount {
-    #[schemars(description = "The account name as it appears in financial statements (e.g., 'Cash at Bank', 'Accounts Receivable')")]
+    #[schemars(
+        description = "The specific account name. IMPORTANT: Extract LEAF nodes only. DO NOT extract subtotal lines like 'Total Assets', 'Total Liabilities', 'Current Assets', or 'Fixed Assets'. Only extract the specific items listed under them (e.g., 'Cash at Bank', 'Accounts Receivable')."
+    )]
     pub name: String,
 
     #[schemars(description = "The type of account (Asset, Liability, or Equity)")]
@@ -121,19 +123,21 @@ pub struct BalanceSheetAccount {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PeriodConstraint {
-    #[schemars(description = "Start of the period (inclusive). For a month, use the first day (e.g., 2023-01-01). For a quarter, use the first day of the quarter. For a year, use the fiscal year start.")]
+    #[schemars(description = "Start of the period (inclusive). MUST be before or equal to end_date. For a month, use the first day (e.g., 2023-01-01). For a quarter, use the first day of the quarter. For a year, use the fiscal year start.")]
     pub start_date: NaiveDate,
 
-    #[schemars(description = "End of the period (inclusive). For a month, use the last day (e.g., 2023-01-31). For a quarter, use the quarter end. For a year, use the fiscal year end.")]
+    #[schemars(description = "End of the period (inclusive). MUST be after or equal to start_date. For a month, use the last day (e.g., 2023-01-31). For a quarter, use the quarter end. For a year, use the fiscal year end.")]
     pub end_date: NaiveDate,
 
-    #[schemars(description = "Total value generated during this specific period. You can provide overlapping periods (e.g., a month total AND a quarter total AND a year total). The engine will solve them hierarchically.")]
+    #[schemars(description = "Total value generated during this specific period. If the document lists 'Gross Profit' or 'Net Income', DO NOT extract them. Only extract Revenue and specific Expense categories. You can provide overlapping periods (e.g., a month total AND a quarter total AND a year total). The engine will solve them hierarchically.")]
     pub value: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct IncomeStatementAccount {
-    #[schemars(description = "The account name as it appears in financial statements (e.g., 'Revenue', 'Cost of Sales', 'Salaries')")]
+    #[schemars(
+        description = "The account name (e.g., 'Revenue', 'Salaries'). DO NOT extract 'Total Operating Expenses', 'Gross Profit', 'Net Income', or 'EBITDA'. Extraction should be granular - extract individual revenue and expense line items only."
+    )]
     pub name: String,
 
     #[schemars(description = "The type of account (Revenue, CostOfSales, OperatingExpense, or OtherIncome)")]

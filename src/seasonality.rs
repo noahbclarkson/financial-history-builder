@@ -22,21 +22,22 @@ pub fn get_profile_weights(profile: &SeasonalityProfileId) -> Result<Vec<f64>> {
 
         SeasonalityProfileId::RetailPeak => {
             vec![
-                0.045, 0.045, 0.045, 0.055, 0.055, 0.060, 0.065, 0.070, 0.075, 0.080, 0.105,
-                0.300,
+                0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075,
+                0.175,
             ]
         }
 
         SeasonalityProfileId::SummerHigh => {
             vec![
-                0.05, 0.05, 0.05, 0.12, 0.12, 0.12, 0.12, 0.12, 0.07, 0.07, 0.07, 0.04,
+                0.065, 0.065, 0.065, 0.100, 0.100, 0.100, 0.100, 0.100, 0.080, 0.080, 0.080,
+                0.065,
             ]
         }
 
         SeasonalityProfileId::SaasGrowth => {
             let mut weights = Vec::new();
-            let base = 0.06;
-            let increment = 0.04 / 11.0;
+            let base = 0.065;
+            let increment = 0.035 / 11.0;
             for i in 0..12 {
                 weights.push(base + (i as f64 * increment));
             }
@@ -123,7 +124,7 @@ mod tests {
         assert_eq!(weights.len(), 12);
         let sum: f64 = weights.iter().sum();
         assert!((sum - 1.0).abs() < 1e-10);
-        assert!(weights[11] > 0.25);
+        assert!(weights[11] > 0.15);
     }
 
     #[test]

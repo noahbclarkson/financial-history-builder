@@ -82,6 +82,7 @@ pub struct FinancialHistoryProcessor;
 
 impl FinancialHistoryProcessor {
     pub fn process(config: &FinancialHistoryConfig) -> Result<BTreeMap<String, DenseSeries>> {
+        validate_config_integrity(config)?;
         validate_fiscal_year_end_month(config.fiscal_year_end_month)?;
 
         let mut dense_data = process_config(config)?;
@@ -114,6 +115,64 @@ pub fn process_with_verification(
     tolerance: f64,
 ) -> Result<BTreeMap<String, DenseSeries>> {
     FinancialHistoryProcessor::process_with_verification(config, tolerance)
+}
+
+fn validate_config_integrity(config: &FinancialHistoryConfig) -> Result<()> {
+    let mut errors = Vec::new();
+
+    for account in &config.income_statement {
+        for constraint in &account.constraints {
+            if constraint.end_date < constraint.start_date {
+                errors.push(format!(
+                    "Account '{}': End date {} is before start date {}",
+                    account.name, constraint.end_date, constraint.start_date
+                ));
+            }
+        }
+    }
+
+    let forbidden_terms = vec![
+        "total assets",
+        "total liabilities",
+        "total equity",
+        "total revenue",
+        "gross profit",
+        "net income",
+        "total operating expenses",
+        "total expenses",
+        "ebitda",
+        "current assets",
+        "fixed assets",
+        "non-current assets",
+        "current liabilities",
+        "non-current liabilities",
+    ];
+
+    for account in &config.balance_sheet {
+        let name_lower = account.name.to_lowercase();
+        if forbidden_terms.iter().any(|t| name_lower.contains(t)) {
+            errors.push(format!(
+                "Forbidden account detected: '{}'. Do not extract totals/subtotals.",
+                account.name
+            ));
+        }
+    }
+
+    for account in &config.income_statement {
+        let name_lower = account.name.to_lowercase();
+        if forbidden_terms.iter().any(|t| name_lower.contains(t)) {
+            errors.push(format!(
+                "Forbidden account detected: '{}'. Do not extract totals/subtotals.",
+                account.name
+            ));
+        }
+    }
+
+    if !errors.is_empty() {
+        return Err(FinancialHistoryError::InvalidAnchor(errors.join("; ")));
+    }
+
+    Ok(())
 }
 
 fn enforce_accounting_equation_new(

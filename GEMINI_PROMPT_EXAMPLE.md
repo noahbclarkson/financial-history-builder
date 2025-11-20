@@ -28,6 +28,14 @@ The system uses **two distinct mathematical approaches** for different types of 
 
 ## Critical Rules
 
+### ⛔ EXCLUSION RULES (Must Follow)
+
+1. **NO SUBTOTALS OR TOTALS:** Never extract lines like "Total Assets", "Total Liabilities", "Total Equity", "Current Assets", "Fixed Assets", "Gross Profit", "Total Operating Expenses", "EBITDA", or "Net Income". The system calculates these automatically. Extracting them causes double-counting and validation errors.
+
+2. **LEAF NODES ONLY:** If a document lists a category header (e.g., "Fixed Assets", "Current Assets") followed by items (e.g., "Equipment", "Vehicles", "Cash", "Inventory"), **ONLY** extract the items. Ignore the header lines completely.
+
+3. **COMPUTED VALUES ARE FORBIDDEN:** Lines that are the result of addition or subtraction (e.g., "Gross Profit = Revenue - COGS", "Net Income = Revenue - Expenses") should NEVER be extracted. Extract only the underlying raw values.
+
 ### For Balance Sheet Items (Assets, Liabilities, Equity)
 
 1. **Use Snapshots**: Each snapshot represents the balance **ON that specific date**.
