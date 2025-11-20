@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -17,12 +18,13 @@ pub enum FinancialHistoryError {
     #[error("Custom seasonality profile has invalid weights: {0}")]
     InvalidSeasonalityWeights(String),
 
-    #[error("Accounting equation violation on {date}: Assets ({assets}) != Liabilities ({liabilities}) + Equity ({equity})")]
+    #[error("Accounting equation violation on {date}: Assets ({assets}) != Liabilities ({liabilities}) + Equity ({equity}), difference: {difference}")]
     AccountingEquationViolation {
-        date: String,
+        date: NaiveDate,
         assets: f64,
         liabilities: f64,
         equity: f64,
+        difference: f64,
     },
 
     #[error("Interpolation error: {0}")]

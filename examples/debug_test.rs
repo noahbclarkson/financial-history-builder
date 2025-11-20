@@ -2,59 +2,56 @@ use financial_history_builder::*;
 use chrono::NaiveDate;
 
 fn main() {
-    let history = SparseFinancialHistory {
+    let config = FinancialHistoryConfig {
         organization_name: "Debug".to_string(),
         fiscal_year_end_month: 12,
-        accounts: vec![
-            SparseAccount {
-                name: "Sales".to_string(),
-                account_type: AccountType::Revenue,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
-                        value: 10_000.0,
-                        anchor_type: AnchorType::Period,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
-                        value: 0.0,
-                        anchor_type: AnchorType::Period,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 3, 31).unwrap(),
-                        value: 25_000.0,
-                        anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            SparseAccount {
+        balance_sheet: vec![
+            BalanceSheetAccount {
                 name: "Cash".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 100000.0,
-                        anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 100000.0,
-                        anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: true,
+                noise_factor: None,
+            },
+        ],
+        income_statement: vec![
+            IncomeStatementAccount {
+                name: "Sales".to_string(),
+                account_type: AccountType::Revenue,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
+                        value: 10_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 2, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
+                        value: 0.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 3, 31).unwrap(),
+                        value: 25_000.0,
+                    },
+                ],
+                noise_factor: None,
             },
         ],
     };
 
-    let dense = process_financial_history(&history).unwrap();
+    let dense = process_financial_history(&config).unwrap();
     let sales = dense.get("Sales").unwrap();
 
     println!("\nSales breakdown:");
@@ -69,7 +66,7 @@ fn main() {
     println!("\nExpected:");
     println!("Jan: $10,000.00");
     println!("Feb: $0.00");
-    println!("Mar: $15,000.00 (25k cumulative - 10k from Jan - 0 from Feb)");
+    println!("Mar: $15,000.00 (25k total - 10k Jan - 0 Feb)");
 
     println!("\nActual:");
     println!("Jan: ${:.2}", jan);

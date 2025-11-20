@@ -44,295 +44,253 @@ fn export_to_csv(
 
 #[test]
 fn test_comprehensive_retail_business() {
-    let history = SparseFinancialHistory {
+    let config = FinancialHistoryConfig {
         organization_name: "Retail Haven Inc".to_string(),
         fiscal_year_end_month: 12,
-        accounts: vec![
-            SparseAccount {
-                name: "Sales Revenue".to_string(),
-                account_type: AccountType::Revenue,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Seasonal {
-                    profile_id: SeasonalityProfileId::RetailPeak,
-                },
-                noise_factor: Some(0.05),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
-                        value: 2_400_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 3_000_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-            is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Cost of Goods Sold".to_string(),
-                account_type: AccountType::CostOfSales,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Seasonal {
-                    profile_id: SeasonalityProfileId::RetailPeak,
-                },
-                noise_factor: Some(0.04),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
-                        value: 1_440_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 1_800_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-            is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Store Rent".to_string(),
-                account_type: AccountType::OperatingExpense,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Step,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
-                        value: 120_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 132_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Salaries & Wages".to_string(),
-                account_type: AccountType::OperatingExpense,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: Some(0.02),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
-                        value: 480_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 540_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Marketing Expenses".to_string(),
-                account_type: AccountType::OperatingExpense,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Seasonal {
-                    profile_id: SeasonalityProfileId::RetailPeak,
-                },
-                noise_factor: Some(0.08),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
-                        value: 144_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 180_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-            is_balancing_account: false,
-            },
-            SparseAccount {
+        balance_sheet: vec![
+            BalanceSheetAccount {
                 name: "Cash at Bank".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Curve,
-                noise_factor: Some(0.03),
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Curve,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 150_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 180_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 250_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
-                is_balancing_account: false,
+                is_balancing_account: true,
+                noise_factor: Some(0.03),
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Inventory".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: Some(0.05),
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 200_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 240_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 300_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: Some(0.05),
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Accounts Receivable".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: Some(0.04),
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 80_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 100_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 130_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: Some(0.04),
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Equipment".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Step,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Step,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 100_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 95_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 90_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: None,
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Accounts Payable".to_string(),
                 account_type: AccountType::Liability,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: Some(0.03),
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 60_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 75_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 95_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: Some(0.03),
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Bank Loan".to_string(),
                 account_type: AccountType::Liability,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 200_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 180_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 160_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: None,
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Share Capital".to_string(),
                 account_type: AccountType::Equity,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Step,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Step,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 250_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 250_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 250_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: None,
+            },
+        ],
+        income_statement: vec![
+            IncomeStatementAccount {
+                name: "Sales Revenue".to_string(),
+                account_type: AccountType::Revenue,
+                seasonality_profile: SeasonalityProfileId::RetailPeak,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        value: 2_400_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 3_000_000.0,
+                    },
+                ],
+                noise_factor: Some(0.05),
+            },
+            IncomeStatementAccount {
+                name: "Cost of Goods Sold".to_string(),
+                account_type: AccountType::CostOfSales,
+                seasonality_profile: SeasonalityProfileId::RetailPeak,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        value: 1_440_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 1_800_000.0,
+                    },
+                ],
+                noise_factor: Some(0.04),
+            },
+            IncomeStatementAccount {
+                name: "Store Rent".to_string(),
+                account_type: AccountType::OperatingExpense,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        value: 120_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 132_000.0,
+                    },
+                ],
+                noise_factor: None,
+            },
+            IncomeStatementAccount {
+                name: "Salaries & Wages".to_string(),
+                account_type: AccountType::OperatingExpense,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        value: 480_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 540_000.0,
+                    },
+                ],
+                noise_factor: Some(0.02),
+            },
+            IncomeStatementAccount {
+                name: "Marketing Expenses".to_string(),
+                account_type: AccountType::OperatingExpense,
+                seasonality_profile: SeasonalityProfileId::RetailPeak,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        value: 144_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 180_000.0,
+                    },
+                ],
+                noise_factor: Some(0.08),
             },
         ],
     };
 
-    let dense = process_financial_history(&history).unwrap();
+    let dense = process_financial_history(&config).unwrap();
 
     export_to_csv(&dense, "test_retail_business.csv").unwrap();
 
@@ -346,7 +304,7 @@ fn test_comprehensive_retail_business() {
 
     assert!((sales_total_2022 - 2_400_000.0).abs() < 1.0);
 
-    let verification = verify_accounting_equation(&history, &dense, 1.0);
+    let verification = verify_accounting_equation(&config, &dense, 1.0);
     assert!(verification.is_ok());
 
     println!("✓ Retail business test passed - output: test_retail_business.csv");
@@ -354,262 +312,229 @@ fn test_comprehensive_retail_business() {
 
 #[test]
 fn test_saas_startup() {
-    let history = SparseFinancialHistory {
+    let config = FinancialHistoryConfig {
         organization_name: "CloudTech SaaS Inc".to_string(),
         fiscal_year_end_month: 12,
-        accounts: vec![
-            SparseAccount {
-                name: "Subscription Revenue".to_string(),
-                account_type: AccountType::Revenue,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Seasonal {
-                    profile_id: SeasonalityProfileId::SaasGrowth,
-                },
-                noise_factor: Some(0.03),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
-                        value: 600_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 1_200_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-            is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Professional Services".to_string(),
-                account_type: AccountType::Revenue,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: Some(0.06),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
-                        value: 150_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 300_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Cloud Infrastructure Costs".to_string(),
-                account_type: AccountType::CostOfSales,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Seasonal {
-                    profile_id: SeasonalityProfileId::SaasGrowth,
-                },
-                noise_factor: Some(0.02),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
-                        value: 120_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 240_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-            is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Engineering Salaries".to_string(),
-                account_type: AccountType::OperatingExpense,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Step,
-                noise_factor: Some(0.01),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
-                        value: 720_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 960_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Sales & Marketing".to_string(),
-                account_type: AccountType::OperatingExpense,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: Some(0.07),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
-                        value: 300_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 480_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Office & Admin".to_string(),
-                account_type: AccountType::OperatingExpense,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Step,
-                noise_factor: Some(0.03),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
-                        value: 60_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 72_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            SparseAccount {
+        balance_sheet: vec![
+            BalanceSheetAccount {
                 name: "Cash".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: Some(0.04),
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 500_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 350_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 200_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
-                is_balancing_account: false,
+                is_balancing_account: true,
+                noise_factor: Some(0.04),
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Accounts Receivable".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: Some(0.05),
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 50_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 75_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 125_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: Some(0.05),
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Accounts Payable".to_string(),
                 account_type: AccountType::Liability,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: Some(0.03),
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 40_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 55_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 75_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: Some(0.03),
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Deferred Revenue".to_string(),
                 account_type: AccountType::Liability,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Curve,
-                noise_factor: Some(0.04),
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Curve,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 100_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 150_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 250_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: Some(0.04),
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Share Capital".to_string(),
                 account_type: AccountType::Equity,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Step,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Step,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 1_000_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 1_500_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: None,
+            },
+        ],
+        income_statement: vec![
+            IncomeStatementAccount {
+                name: "Subscription Revenue".to_string(),
+                account_type: AccountType::Revenue,
+                seasonality_profile: SeasonalityProfileId::SaasGrowth,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        value: 600_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 1_200_000.0,
+                    },
+                ],
+                noise_factor: Some(0.03),
+            },
+            IncomeStatementAccount {
+                name: "Professional Services".to_string(),
+                account_type: AccountType::Revenue,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        value: 150_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 300_000.0,
+                    },
+                ],
+                noise_factor: Some(0.06),
+            },
+            IncomeStatementAccount {
+                name: "Cloud Infrastructure Costs".to_string(),
+                account_type: AccountType::CostOfSales,
+                seasonality_profile: SeasonalityProfileId::SaasGrowth,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        value: 120_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 240_000.0,
+                    },
+                ],
+                noise_factor: Some(0.02),
+            },
+            IncomeStatementAccount {
+                name: "Engineering Salaries".to_string(),
+                account_type: AccountType::OperatingExpense,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        value: 720_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 960_000.0,
+                    },
+                ],
+                noise_factor: Some(0.01),
+            },
+            IncomeStatementAccount {
+                name: "Sales & Marketing".to_string(),
+                account_type: AccountType::OperatingExpense,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        value: 300_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 480_000.0,
+                    },
+                ],
+                noise_factor: Some(0.07),
+            },
+            IncomeStatementAccount {
+                name: "Office & Admin".to_string(),
+                account_type: AccountType::OperatingExpense,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        value: 60_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 72_000.0,
+                    },
+                ],
+                noise_factor: Some(0.03),
             },
         ],
     };
 
-    let dense = process_financial_history(&history).unwrap();
+    let dense = process_financial_history(&config).unwrap();
 
     export_to_csv(&dense, "test_saas_startup.csv").unwrap();
 
-    let verification = verify_accounting_equation(&history, &dense, 1.0);
+    let verification = verify_accounting_equation(&config, &dense, 1.0);
     assert!(verification.is_ok());
 
     println!("✓ SaaS startup test passed - output: test_saas_startup.csv");
@@ -617,316 +542,191 @@ fn test_saas_startup() {
 
 #[test]
 fn test_hospitality_business() {
-    let history = SparseFinancialHistory {
+    let config = FinancialHistoryConfig {
         organization_name: "Seaside Resort Ltd".to_string(),
         fiscal_year_end_month: 12,
-        accounts: vec![
-            SparseAccount {
-                name: "Room Revenue".to_string(),
-                account_type: AccountType::Revenue,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Seasonal {
-                    profile_id: SeasonalityProfileId::SummerHigh,
-                },
-                noise_factor: Some(0.06),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 1_800_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-            is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Food & Beverage Revenue".to_string(),
-                account_type: AccountType::Revenue,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Seasonal {
-                    profile_id: SeasonalityProfileId::SummerHigh,
-                },
-                noise_factor: Some(0.07),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 600_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-            is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "F&B Cost of Sales".to_string(),
-                account_type: AccountType::CostOfSales,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Seasonal {
-                    profile_id: SeasonalityProfileId::SummerHigh,
-                },
-                noise_factor: Some(0.04),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 210_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-            is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Staff Wages".to_string(),
-                account_type: AccountType::OperatingExpense,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Seasonal {
-                    profile_id: SeasonalityProfileId::SummerHigh,
-                },
-                noise_factor: Some(0.03),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 720_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-            is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Utilities".to_string(),
-                account_type: AccountType::OperatingExpense,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Seasonal {
-                    profile_id: SeasonalityProfileId::SummerHigh,
-                },
-                noise_factor: Some(0.05),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 120_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-            is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Property Lease".to_string(),
-                account_type: AccountType::OperatingExpense,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Step,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 240_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            SparseAccount {
+        balance_sheet: vec![
+            BalanceSheetAccount {
                 name: "Cash".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Curve,
-                noise_factor: Some(0.05),
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Curve,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 200_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 8, 31).unwrap(),
                         value: 400_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 280_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
-                is_balancing_account: false,
+                is_balancing_account: true,
+                noise_factor: Some(0.05),
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Property & Equipment".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 2_000_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 1_900_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: None,
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Trade Payables".to_string(),
                 account_type: AccountType::Liability,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: Some(0.04),
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 80_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 100_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: Some(0.04),
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Mortgage".to_string(),
                 account_type: AccountType::Liability,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 1_500_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 1_450_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: None,
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Owner's Equity".to_string(),
                 account_type: AccountType::Equity,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Step,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Step,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 600_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: None,
+            },
+        ],
+        income_statement: vec![
+            IncomeStatementAccount {
+                name: "Room Revenue".to_string(),
+                account_type: AccountType::Revenue,
+                seasonality_profile: SeasonalityProfileId::SummerHigh,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 1_800_000.0,
+                    },
+                ],
+                noise_factor: Some(0.06),
+            },
+            IncomeStatementAccount {
+                name: "Food & Beverage Revenue".to_string(),
+                account_type: AccountType::Revenue,
+                seasonality_profile: SeasonalityProfileId::SummerHigh,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 600_000.0,
+                    },
+                ],
+                noise_factor: Some(0.07),
+            },
+            IncomeStatementAccount {
+                name: "F&B Cost of Sales".to_string(),
+                account_type: AccountType::CostOfSales,
+                seasonality_profile: SeasonalityProfileId::SummerHigh,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 210_000.0,
+                    },
+                ],
+                noise_factor: Some(0.04),
+            },
+            IncomeStatementAccount {
+                name: "Staff Wages".to_string(),
+                account_type: AccountType::OperatingExpense,
+                seasonality_profile: SeasonalityProfileId::SummerHigh,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 720_000.0,
+                    },
+                ],
+                noise_factor: Some(0.03),
+            },
+            IncomeStatementAccount {
+                name: "Utilities".to_string(),
+                account_type: AccountType::OperatingExpense,
+                seasonality_profile: SeasonalityProfileId::SummerHigh,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 120_000.0,
+                    },
+                ],
+                noise_factor: Some(0.05),
+            },
+            IncomeStatementAccount {
+                name: "Property Lease".to_string(),
+                account_type: AccountType::OperatingExpense,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 240_000.0,
+                    },
+                ],
+                noise_factor: None,
             },
         ],
     };
 
-    let dense = process_financial_history(&history).unwrap();
+    let dense = process_financial_history(&config).unwrap();
 
     export_to_csv(&dense, "test_hospitality_business.csv").unwrap();
 
-    let verification = verify_accounting_equation(&history, &dense, 1.0);
+    let verification = verify_accounting_equation(&config, &dense, 1.0);
     assert!(verification.is_ok());
 
     println!("✓ Hospitality business test passed - output: test_hospitality_business.csv");
 }
 
 #[test]
-fn test_custom_seasonality() {
-    let custom_pattern = vec![
-        0.05, 0.05, 0.10, 0.15, 0.10, 0.05, 0.05, 0.10, 0.15, 0.10, 0.05, 0.05,
-    ];
-
-    let history = SparseFinancialHistory {
-        organization_name: "Custom Pattern Corp".to_string(),
-        fiscal_year_end_month: 6,
-        accounts: vec![
-            SparseAccount {
-                name: "Custom Revenue".to_string(),
-                account_type: AccountType::Revenue,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Seasonal {
-                    profile_id: SeasonalityProfileId::Custom(custom_pattern),
-                },
-                noise_factor: Some(0.03),
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 6, 30).unwrap(),
-                        value: 1_200_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-            is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Cash".to_string(),
-                account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 7, 31).unwrap(),
-                        value: 100_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 6, 30).unwrap(),
-                        value: 150_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Liabilities".to_string(),
-                account_type: AccountType::Liability,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Step,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 7, 31).unwrap(),
-                        value: 50_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            SparseAccount {
-                name: "Equity".to_string(),
-                account_type: AccountType::Equity,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Step,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2022, 7, 31).unwrap(),
-                        value: 50_000.0,
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-        ],
-    };
-
-    let dense = process_financial_history(&history).unwrap();
-
-    export_to_csv(&dense, "test_custom_seasonality.csv").unwrap();
-
-    let revenue_total: f64 = dense.get("Custom Revenue").unwrap().values().sum();
-    assert!((revenue_total - 1_200_000.0).abs() < 1.0);
-
-    println!("✓ Custom seasonality test passed - output: test_custom_seasonality.csv");
-}
-
-#[test]
 fn test_schema_generation() {
-    let schema_json = SparseFinancialHistory::schema_as_json().unwrap();
+    let schema_json = FinancialHistoryConfig::schema_as_json().unwrap();
 
     let mut file = File::create("schema_output.json").unwrap();
     file.write_all(schema_json.as_bytes()).unwrap();
@@ -942,89 +742,79 @@ fn test_schema_generation() {
 
 #[test]
 fn test_designated_balancing_account() {
-    let history = SparseFinancialHistory {
+    let config = FinancialHistoryConfig {
         organization_name: "Tech Startup Inc".to_string(),
         fiscal_year_end_month: 12,
-        accounts: vec![
-            SparseAccount {
+        balance_sheet: vec![
+            BalanceSheetAccount {
                 name: "Cash at Bank".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 100_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: true,
+                noise_factor: None,
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Accounts Receivable".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: Some(0.02),
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 50_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 75_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: Some(0.02),
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Accounts Payable".to_string(),
                 account_type: AccountType::Liability,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: Some(0.01),
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 30_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 40_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: Some(0.01),
             },
-            SparseAccount {
+            BalanceSheetAccount {
                 name: "Share Capital".to_string(),
                 account_type: AccountType::Equity,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Step,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Step,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 100_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 100_000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: false,
+                noise_factor: None,
             },
         ],
+        income_statement: vec![],
     };
 
-    let dense = process_financial_history(&history).unwrap();
+    let dense = process_financial_history(&config).unwrap();
 
     export_to_csv(&dense, "test_designated_balancing_account.csv").unwrap();
 
@@ -1035,7 +825,7 @@ fn test_designated_balancing_account() {
 
     assert!(!dense.contains_key("Balancing Equity Adjustment"));
 
-    let chart = ChartOfAccounts::from_dense_data(&history, &dense);
+    let chart = ChartOfAccounts::from_dense_data(&config, &dense);
 
     assert_eq!(chart.total_accounts(), 4);
 
@@ -1060,144 +850,120 @@ fn test_designated_balancing_account() {
 }
 
 #[test]
-fn test_mixed_period_and_cumulative() {
-    // Scenario:
-    // 1. Jan Sales: $10k (Period)
-    // 2. Feb Sales: $0 (Period - "We had no sales in Feb")
-    // 3. Q1 Total: $25k (Cumulative YTD at March 31) -> Implies March was $15k
-
-    let history = SparseFinancialHistory {
+fn test_hierarchical_constraints() {
+    let config = FinancialHistoryConfig {
         organization_name: "Mixed Mode Corp".to_string(),
         fiscal_year_end_month: 12,
-        accounts: vec![
-            SparseAccount {
-                name: "Sales".to_string(),
-                account_type: AccountType::Revenue,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
-                        value: 10_000.0,
-                        anchor_type: AnchorType::Period,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
-                        value: 0.0,
-                        anchor_type: AnchorType::Period,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 3, 31).unwrap(),
-                        value: 25_000.0,
-                        anchor_type: AnchorType::Cumulative, // $25k YTD
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            SparseAccount {
+        balance_sheet: vec![
+            BalanceSheetAccount {
                 name: "Cash".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 100000.0,
-                        anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 100000.0,
-                        anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: true,
+                noise_factor: None,
+            },
+        ],
+        income_statement: vec![
+            IncomeStatementAccount {
+                name: "Sales".to_string(),
+                account_type: AccountType::Revenue,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
+                        value: 10_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 2, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
+                        value: 0.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 3, 31).unwrap(),
+                        value: 25_000.0,
+                    },
+                ],
+                noise_factor: None,
             },
         ],
     };
 
-    let dense = process_financial_history(&history).unwrap();
+    let dense = process_financial_history(&config).unwrap();
     let sales = dense.get("Sales").unwrap();
 
-    // Check Jan
     let jan = sales.get(&NaiveDate::from_ymd_opt(2023, 1, 31).unwrap()).unwrap();
     assert!((jan - 10_000.0).abs() < 0.01, "Jan should be $10k, got {}", jan);
 
-    // Check Feb (Should be exactly 0)
     let feb = sales.get(&NaiveDate::from_ymd_opt(2023, 2, 28).unwrap()).unwrap();
     assert_eq!(*feb, 0.0, "Feb should be exactly $0");
 
-    // Check March
-    // Cumulative is 25k. Jan(10) + Feb(0) = 10k.
-    // So March Period Value = 25k - 10k = 15k.
     let mar = sales.get(&NaiveDate::from_ymd_opt(2023, 3, 31).unwrap()).unwrap();
     assert!((mar - 15_000.0).abs() < 0.01, "Mar should be $15k, got {}", mar);
 
-    println!("✓ Mixed Period and Cumulative anchor types test passed");
+    println!("✓ Hierarchical constraints test passed");
 }
 
 #[test]
-fn test_discrete_quarterly_input() {
-    // Scenario: "In Q3 we made $15,000 in Sales A"
-    // Anchor at Sep 30 with value 15,000 and type Period.
-    // Assumes previous anchor or start of year bounds it.
-
-    let history = SparseFinancialHistory {
+fn test_quarterly_constraints() {
+    let config = FinancialHistoryConfig {
         organization_name: "Quarterly Corp".to_string(),
         fiscal_year_end_month: 12,
-        accounts: vec![
-            SparseAccount {
-                name: "Sales A".to_string(),
-                account_type: AccountType::Revenue,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Linear, // Even spread
-                noise_factor: None,
-                anchors: vec![
-                    // Anchor for H1 (Jan-Jun)
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 6, 30).unwrap(),
-                        value: 50_000.0,
-                        anchor_type: AnchorType::Cumulative,
-                    },
-                    // Anchor for Q3 (Jul-Sep) - Discrete
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 9, 30).unwrap(),
-                        value: 15_000.0,
-                        anchor_type: AnchorType::Period,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            SparseAccount {
+        balance_sheet: vec![
+            BalanceSheetAccount {
                 name: "Cash".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 100000.0,
-                        anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 100000.0,
-                        anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: true,
+                noise_factor: None,
+            },
+        ],
+        income_statement: vec![
+            IncomeStatementAccount {
+                name: "Sales A".to_string(),
+                account_type: AccountType::Revenue,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 6, 30).unwrap(),
+                        value: 50_000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 7, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 9, 30).unwrap(),
+                        value: 15_000.0,
+                    },
+                ],
+                noise_factor: None,
             },
         ],
     };
 
-    let dense = process_financial_history(&history).unwrap();
+    let dense = process_financial_history(&config).unwrap();
     let sales = dense.get("Sales A").unwrap();
 
-    // Check Q3 (Jul, Aug, Sep)
-    // Total 15k spread linearly over 3 months = 5k/month
     let jul = sales.get(&NaiveDate::from_ymd_opt(2023, 7, 31).unwrap()).unwrap();
     let aug = sales.get(&NaiveDate::from_ymd_opt(2023, 8, 31).unwrap()).unwrap();
     let sep = sales.get(&NaiveDate::from_ymd_opt(2023, 9, 30).unwrap()).unwrap();
@@ -1206,5 +972,5 @@ fn test_discrete_quarterly_input() {
     assert!((aug - 5000.0).abs() < 0.1, "Aug should be ~$5k, got {}", aug);
     assert!((sep - 5000.0).abs() < 0.1, "Sep should be ~$5k, got {}", sep);
 
-    println!("✓ Discrete quarterly input test passed");
+    println!("✓ Quarterly constraints test passed");
 }

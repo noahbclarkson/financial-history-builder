@@ -55,10 +55,14 @@ pub fn fiscal_year_start(fiscal_year_end: NaiveDate) -> NaiveDate {
 
 pub fn get_month_ends_in_period(start: NaiveDate, end: NaiveDate) -> Vec<NaiveDate> {
     let mut dates = Vec::new();
-    let mut current = start;
 
+    let start_month_end = last_day_of_month(start.year(), start.month());
+
+    let mut current = start_month_end;
     while current <= end {
-        dates.push(current);
+        if current >= start {
+            dates.push(current);
+        }
         current = next_month_end(current);
     }
 

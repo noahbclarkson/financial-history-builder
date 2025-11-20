@@ -37,47 +37,6 @@ pub enum AccountType {
     Equity,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
-#[serde(rename_all = "PascalCase")]
-pub enum AccountBehavior {
-    #[schemars(
-        description = "Flow accounts represent activity over a period (e.g., Revenue, Expenses). The anchor value is the TOTAL for the period, which will be distributed across months."
-    )]
-    Flow,
-
-    #[schemars(
-        description = "Stock accounts represent a snapshot at a point in time (e.g., Cash, Accounts Receivable). The anchor value is the balance ON that specific date."
-    )]
-    Stock,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
-#[serde(rename_all = "PascalCase", tag = "method")]
-pub enum InterpolationMethod {
-    #[schemars(
-        description = "Linear interpolation between anchor points. Good for steady, predictable growth in revenues or gradual changes in balance sheet accounts."
-    )]
-    Linear,
-
-    #[schemars(
-        description = "Step function - value remains constant until the next anchor. Ideal for fixed costs like rent, insurance premiums, or subscription fees that don't change month-to-month."
-    )]
-    Step,
-
-    #[schemars(
-        description = "Smooth Catmull-Rom curve interpolation. Best for balance sheet accounts that change organically over time (e.g., gradual inventory buildup, smoothly growing accounts receivable)."
-    )]
-    Curve,
-
-    #[schemars(
-        description = "Distributes the annual total according to a predefined seasonality pattern. Use for revenues/expenses with known cyclical patterns (retail, tourism, SaaS)."
-    )]
-    Seasonal {
-        #[schemars(description = "The seasonality profile to apply")]
-        profile_id: SeasonalityProfileId,
-    },
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(rename_all = "PascalCase")]
 pub enum SeasonalityProfileId {
@@ -112,74 +71,88 @@ pub enum SeasonalityProfileId {
     ),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
-#[serde(rename_all = "PascalCase")]
-pub enum AnchorType {
-    #[schemars(description = "The value represents the cumulative total from the start of the fiscal year up to this date (Default for Flow accounts).")]
-    Cumulative,
-
-    #[schemars(description = "The value represents the specific amount generated ONLY in the period since the previous anchor point.")]
-    Period,
-}
-
-impl Default for AnchorType {
-    fn default() -> Self {
-        Self::Cumulative
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AnchorPoint {
-    #[schemars(
-        description = "Date in YYYY-MM-DD format. For Flow accounts, this is the END of the period (e.g., 2023-12-31 for FY2023). For Stock accounts, this is the snapshot date."
-    )]
+pub struct BalanceSheetSnapshot {
+    #[schemars(description = "The date of the snapshot (e.g., 2023-12-31). Use month-end dates.")]
     pub date: NaiveDate,
 
-    #[schemars(
-        description = "The monetary value at this anchor point. For Flow accounts with Cumulative type, this is the YTD total. For Period type, this is the specific period amount. For Stock accounts, this is the balance on the date. Can be negative for certain account types."
-    )]
+    #[schemars(description = "The value of the account on this specific date (point-in-time balance)")]
     pub value: f64,
+}
 
-    #[serde(default)]
-    #[schemars(description = "Defines if the value is a Cumulative YTD total or a specific Period amount. Only applies to Flow accounts (P&L). Stock accounts always use point-in-time balances. Defaults to Cumulative.")]
-    pub anchor_type: AnchorType,
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
+#[serde(rename_all = "PascalCase")]
+pub enum InterpolationMethod {
+    #[schemars(description = "Draw straight lines between snapshots. Good for accounts that change steadily.")]
+    Linear,
+
+    #[schemars(description = "Hold value until it changes. Ideal for accounts that remain constant between snapshots.")]
+    Step,
+
+    #[schemars(description = "Smooth curve (Catmull-Rom) between snapshots. Best for organic changes in balance sheet accounts.")]
+    Curve,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SparseAccount {
-    #[schemars(
-        description = "The account name as it appears in financial statements (e.g., 'Sales Revenue', 'Office Rent', 'Cash at Bank')"
-    )]
+pub struct BalanceSheetAccount {
+    #[schemars(description = "The account name as it appears in financial statements (e.g., 'Cash at Bank', 'Accounts Receivable')")]
     pub name: String,
 
-    #[schemars(description = "Classification of the account for financial statement presentation")]
+    #[schemars(description = "The type of account (Asset, Liability, or Equity)")]
     pub account_type: AccountType,
 
-    #[schemars(description = "Whether this account is a flow (period activity) or stock (point-in-time balance)")]
-    pub behavior: AccountBehavior,
+    #[schemars(description = "How to interpolate values between snapshots")]
+    pub method: InterpolationMethod,
 
-    #[schemars(description = "How to interpolate values between anchor points")]
-    pub interpolation: InterpolationMethod,
-
-    #[schemars(
-        description = "Optional variance to add realistic noise. Range: 0.0 (no noise) to 0.1 (10% random variation). Use 0.0 for fixed costs like rent. Use 0.03-0.05 for variable revenues/expenses. Use 0.01-0.02 for balance sheet accounts."
-    )]
-    pub noise_factor: Option<f64>,
-
-    #[schemars(
-        description = "Array of known data points. Must have at least one anchor. For Flow accounts, anchors typically represent fiscal year ends. For Stock accounts, they represent balance sheet dates."
-    )]
-    pub anchors: Vec<AnchorPoint>,
+    #[schemars(description = "Array of known balance sheet snapshots. Must have at least one snapshot. These are point-in-time balances, not cumulative totals.")]
+    pub snapshots: Vec<BalanceSheetSnapshot>,
 
     #[serde(default)]
     #[schemars(
-        description = "If true, this account will be used as the balancing/plug account to enforce the accounting equation (Assets = Liabilities + Equity). Typically set for Cash or a Retained Earnings account. Only ONE account should have this flag set to true. If no account is marked, a 'Balancing Equity Adjustment' account will be created automatically."
+        description = "If true, this account will be used as the balancing account to enforce the accounting equation (Assets = Liabilities + Equity). Typically set for Cash or Retained Earnings. Only ONE account should have this flag set to true."
     )]
     pub is_balancing_account: bool,
+
+    #[schemars(
+        description = "Optional variance to add realistic noise. Range: 0.0 (no noise) to 0.1 (10% random variation). Use 0.0 for fixed items. Use 0.01-0.02 for stable balance sheet accounts."
+    )]
+    pub noise_factor: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SparseFinancialHistory {
+pub struct PeriodConstraint {
+    #[schemars(description = "Start of the period (inclusive). For a month, use the first day (e.g., 2023-01-01). For a quarter, use the first day of the quarter. For a year, use the fiscal year start.")]
+    pub start_date: NaiveDate,
+
+    #[schemars(description = "End of the period (inclusive). For a month, use the last day (e.g., 2023-01-31). For a quarter, use the quarter end. For a year, use the fiscal year end.")]
+    pub end_date: NaiveDate,
+
+    #[schemars(description = "Total value generated during this specific period. You can provide overlapping periods (e.g., a month total AND a quarter total AND a year total). The engine will solve them hierarchically.")]
+    pub value: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct IncomeStatementAccount {
+    #[schemars(description = "The account name as it appears in financial statements (e.g., 'Revenue', 'Cost of Sales', 'Salaries')")]
+    pub name: String,
+
+    #[schemars(description = "The type of account (Revenue, CostOfSales, OperatingExpense, or OtherIncome)")]
+    pub account_type: AccountType,
+
+    #[schemars(description = "Defines the shape of the data when filling in gaps between constraints. This determines how the engine distributes values across months.")]
+    pub seasonality_profile: SeasonalityProfileId,
+
+    #[schemars(description = "List of known totals for specific periods (Months, Quarters, or Years). You can and should provide overlapping periods - the engine will solve them hierarchically. For example, provide both a monthly total AND a quarterly total AND a yearly total if available.")]
+    pub constraints: Vec<PeriodConstraint>,
+
+    #[schemars(
+        description = "Optional variance to add realistic noise. Range: 0.0 (no noise) to 0.1 (10% random variation). Use 0.0 for fixed costs. Use 0.03-0.05 for normal revenues/expenses."
+    )]
+    pub noise_factor: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FinancialHistoryConfig {
     #[schemars(description = "The legal name of the organization/business")]
     pub organization_name: String,
 
@@ -188,15 +161,16 @@ pub struct SparseFinancialHistory {
     )]
     pub fiscal_year_end_month: u32,
 
-    #[schemars(
-        description = "Array of all financial accounts with their sparse data points. Should include both Income Statement (flow) and Balance Sheet (stock) accounts."
-    )]
-    pub accounts: Vec<SparseAccount>,
+    #[schemars(description = "Array of Balance Sheet accounts (Assets, Liabilities, Equity) with their snapshots")]
+    pub balance_sheet: Vec<BalanceSheetAccount>,
+
+    #[schemars(description = "Array of Income Statement accounts (Revenue, Expenses) with their period constraints")]
+    pub income_statement: Vec<IncomeStatementAccount>,
 }
 
-impl SparseFinancialHistory {
+impl FinancialHistoryConfig {
     pub fn generate_json_schema() -> schemars::schema::RootSchema {
-        schemars::schema_for!(SparseFinancialHistory)
+        schemars::schema_for!(FinancialHistoryConfig)
     }
 
     pub fn schema_as_json() -> Result<String, serde_json::Error> {
@@ -211,37 +185,53 @@ mod tests {
 
     #[test]
     fn test_schema_generation() {
-        let schema_json = SparseFinancialHistory::schema_as_json().unwrap();
+        let schema_json = FinancialHistoryConfig::schema_as_json().unwrap();
         assert!(schema_json.contains("organization_name"));
         assert!(schema_json.contains("fiscal_year_end_month"));
-        assert!(schema_json.contains("accounts"));
+        assert!(schema_json.contains("balance_sheet"));
+        assert!(schema_json.contains("income_statement"));
         println!("Generated schema:\n{}", schema_json);
     }
 
     #[test]
     fn test_serialization() {
-        let history = SparseFinancialHistory {
+        let config = FinancialHistoryConfig {
             organization_name: "Test Corp".to_string(),
             fiscal_year_end_month: 12,
-            accounts: vec![SparseAccount {
+            balance_sheet: vec![BalanceSheetAccount {
+                name: "Cash".to_string(),
+                account_type: AccountType::Asset,
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
+                        date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
+                        value: 50000.0,
+                    },
+                    BalanceSheetSnapshot {
+                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 75000.0,
+                    },
+                ],
+                is_balancing_account: true,
+                noise_factor: Some(0.02),
+            }],
+            income_statement: vec![IncomeStatementAccount {
                 name: "Revenue".to_string(),
                 account_type: AccountType::Revenue,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Linear,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    value: 1200000.0,
+                }],
                 noise_factor: Some(0.05),
-                anchors: vec![AnchorPoint {
-                    date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                    value: 100000.0,
-                    anchor_type: AnchorType::Cumulative,
-                }],
-                    is_balancing_account: false,
-                }],
+            }],
         };
 
-        let json = serde_json::to_string_pretty(&history).unwrap();
+        let json = serde_json::to_string_pretty(&config).unwrap();
         assert!(json.contains("Test Corp"));
 
-        let deserialized: SparseFinancialHistory = serde_json::from_str(&json).unwrap();
+        let deserialized: FinancialHistoryConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.organization_name, "Test Corp");
     }
 }

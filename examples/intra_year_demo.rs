@@ -2,69 +2,64 @@ use financial_history_builder::*;
 use chrono::{Datelike, NaiveDate};
 
 fn main() {
-    println!("📊 Intra-Year YTD Anchor Demo\n");
-    println!("This demonstrates how Flow accounts handle multiple anchors in the same fiscal year.");
-    println!("When multiple anchors exist, they're treated as cumulative YTD values.\n");
+    println!("📊 Intra-Year Constraint Demo\n");
+    println!("This demonstrates how Income Statement accounts handle overlapping period constraints.");
+    println!("When multiple constraints exist, they're solved hierarchically from smallest to largest.\n");
 
-    let history = SparseFinancialHistory {
+    let config = FinancialHistoryConfig {
         organization_name: "Demo Corp".to_string(),
         fiscal_year_end_month: 12,
-        accounts: vec![
-            // Salaries with intra-year YTD anchors
-            SparseAccount {
-                name: "Salaries".to_string(),
-                account_type: AccountType::OperatingExpense,
-                behavior: AccountBehavior::Flow,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 6, 30).unwrap(),
-                        value: 300000.0, // YTD through June
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                    AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 600000.0, // Full year
-                    anchor_type: AnchorType::Cumulative,
-                    },
-                ],
-                is_balancing_account: false,
-            },
-            // Cash as balancing account
-            SparseAccount {
+        balance_sheet: vec![
+            BalanceSheetAccount {
                 name: "Cash".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![
-                    AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 100000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
-                    AnchorPoint {
+                    BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 100000.0,
-                    anchor_type: AnchorType::Cumulative,
                     },
                 ],
                 is_balancing_account: true,
+                noise_factor: None,
+            },
+        ],
+        income_statement: vec![
+            IncomeStatementAccount {
+                name: "Salaries".to_string(),
+                account_type: AccountType::OperatingExpense,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 6, 30).unwrap(),
+                        value: 300000.0,
+                    },
+                    PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        value: 600000.0,
+                    },
+                ],
+                noise_factor: None,
             },
         ],
     };
 
     println!("📋 Configuration:");
-    println!("  Salaries anchors:");
-    println!("    - 2023-06-30: $300,000 (YTD cumulative)");
-    println!("    - 2023-12-31: $600,000 (full year total)");
+    println!("  Salaries constraints:");
+    println!("    - Jan 1 to Jun 30: $300,000");
+    println!("    - Jan 1 to Dec 31: $600,000 (full year)");
     println!("\n🔄 Expected behavior:");
     println!("  Jan-Jun: Distribute $300,000 across 6 months = $50,000/month");
     println!("  Jul-Dec: Distribute ($600k - $300k) = $300,000 across 6 months = $50,000/month");
     println!("  Total: $600,000\n");
 
-    match process_financial_history(&history) {
+    match process_financial_history(&config) {
         Ok(dense_data) => {
             if let Some(salaries) = dense_data.get("Salaries") {
                 println!("✅ Results:\n");
@@ -90,8 +85,8 @@ fn main() {
                 println!("  Annual Total:  ${:>12.2}", total);
 
                 println!("\n✅ Verification:");
-                println!("  Jan-Jun matches $300k YTD: {}", (jan_jun_total - 300000.0).abs() < 1.0);
-                println!("  Jul-Dec matches $300k incremental: {}", (jul_dec_total - 300000.0).abs() < 1.0);
+                println!("  Jan-Jun matches $300k: {}", (jan_jun_total - 300000.0).abs() < 1.0);
+                println!("  Jul-Dec matches $300k: {}", (jul_dec_total - 300000.0).abs() < 1.0);
                 println!("  Total matches $600k: {}", (total - 600000.0).abs() < 1.0);
             }
         }

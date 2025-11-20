@@ -19,6 +19,7 @@ Cargo.lock
 *.json
 gemini_raw_response.txt
 gemini_output.csv
+test_chart_of_accounts.md
 
 # Added by cargo
 /target

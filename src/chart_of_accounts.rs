@@ -1,5 +1,5 @@
 use crate::engine::DenseSeries;
-use crate::schema::{AccountType, SparseFinancialHistory};
+use crate::schema::{AccountType, FinancialHistoryConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -25,7 +25,7 @@ pub struct ChartOfAccounts {
 }
 
 impl ChartOfAccounts {
-    pub fn from_history(history: &SparseFinancialHistory) -> Self {
+    pub fn from_config(config: &FinancialHistoryConfig) -> Self {
         let mut assets = Vec::new();
         let mut liabilities = Vec::new();
         let mut equity = Vec::new();
@@ -34,7 +34,7 @@ impl ChartOfAccounts {
         let mut operating_expenses = Vec::new();
         let mut other_income = Vec::new();
 
-        for account in &history.accounts {
+        for account in &config.balance_sheet {
             let entry = AccountEntry {
                 name: account.name.clone(),
                 account_type: account.account_type.clone(),
@@ -46,10 +46,24 @@ impl ChartOfAccounts {
                 AccountType::Asset => assets.push(entry),
                 AccountType::Liability => liabilities.push(entry),
                 AccountType::Equity => equity.push(entry),
+                _ => {}
+            }
+        }
+
+        for account in &config.income_statement {
+            let entry = AccountEntry {
+                name: account.name.clone(),
+                account_type: account.account_type.clone(),
+                is_balancing_account: false,
+                code: None,
+            };
+
+            match account.account_type {
                 AccountType::Revenue => revenue.push(entry),
                 AccountType::CostOfSales => cost_of_sales.push(entry),
                 AccountType::OperatingExpense => operating_expenses.push(entry),
                 AccountType::OtherIncome => other_income.push(entry),
+                _ => {}
             }
         }
 
@@ -62,8 +76,8 @@ impl ChartOfAccounts {
         other_income.sort_by(|a, b| a.name.cmp(&b.name));
 
         Self {
-            organization_name: history.organization_name.clone(),
-            fiscal_year_end_month: history.fiscal_year_end_month,
+            organization_name: config.organization_name.clone(),
+            fiscal_year_end_month: config.fiscal_year_end_month,
             assets,
             liabilities,
             equity,
@@ -75,13 +89,16 @@ impl ChartOfAccounts {
     }
 
     pub fn from_dense_data(
-        history: &SparseFinancialHistory,
+        config: &FinancialHistoryConfig,
         dense_data: &BTreeMap<String, DenseSeries>,
     ) -> Self {
-        let mut chart = Self::from_history(history);
+        let mut chart = Self::from_config(config);
 
         for account_name in dense_data.keys() {
-            if !history.accounts.iter().any(|a| a.name == *account_name) {
+            let is_in_balance_sheet = config.balance_sheet.iter().any(|a| a.name == *account_name);
+            let is_in_income_statement = config.income_statement.iter().any(|a| a.name == *account_name);
+
+            if !is_in_balance_sheet && !is_in_income_statement {
                 let entry = AccountEntry {
                     name: account_name.clone(),
                     account_type: AccountType::Equity,
@@ -270,45 +287,43 @@ impl ChartOfAccounts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::{AccountBehavior, AnchorPoint, AnchorType, InterpolationMethod, SparseAccount};
+    use crate::schema::{BalanceSheetAccount, BalanceSheetSnapshot, IncomeStatementAccount, InterpolationMethod, PeriodConstraint, SeasonalityProfileId};
     use chrono::NaiveDate;
 
     #[test]
     fn test_chart_of_accounts_creation() {
-        let history = SparseFinancialHistory {
+        let config = FinancialHistoryConfig {
             organization_name: "Test Corp".to_string(),
             fiscal_year_end_month: 12,
-            accounts: vec![
-                SparseAccount {
+            balance_sheet: vec![
+                BalanceSheetAccount {
                     name: "Cash".to_string(),
                     account_type: AccountType::Asset,
-                    behavior: AccountBehavior::Stock,
-                    interpolation: InterpolationMethod::Linear,
-                    noise_factor: None,
-                    anchors: vec![AnchorPoint {
+                    method: InterpolationMethod::Linear,
+                    snapshots: vec![BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 10000.0,
-                        anchor_type: AnchorType::Cumulative,
                     }],
                     is_balancing_account: true,
+                    noise_factor: None,
                 },
-                SparseAccount {
+            ],
+            income_statement: vec![
+                IncomeStatementAccount {
                     name: "Revenue".to_string(),
                     account_type: AccountType::Revenue,
-                    behavior: AccountBehavior::Flow,
-                    interpolation: InterpolationMethod::Linear,
-                    noise_factor: None,
-                    anchors: vec![AnchorPoint {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    seasonality_profile: SeasonalityProfileId::Flat,
+                    constraints: vec![PeriodConstraint {
+                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 100000.0,
-                        anchor_type: AnchorType::Cumulative,
                     }],
-                    is_balancing_account: false,
+                    noise_factor: None,
                 },
             ],
         };
 
-        let chart = ChartOfAccounts::from_history(&history);
+        let chart = ChartOfAccounts::from_config(&config);
 
         assert_eq!(chart.assets.len(), 1);
         assert_eq!(chart.revenue.len(), 1);
@@ -322,25 +337,24 @@ mod tests {
 
     #[test]
     fn test_chart_to_markdown() {
-        let history = SparseFinancialHistory {
+        let config = FinancialHistoryConfig {
             organization_name: "Test Corp".to_string(),
             fiscal_year_end_month: 12,
-            accounts: vec![SparseAccount {
+            balance_sheet: vec![BalanceSheetAccount {
                 name: "Cash".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![BalanceSheetSnapshot {
                     date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                     value: 10000.0,
-                    anchor_type: AnchorType::Cumulative,
                 }],
                 is_balancing_account: true,
+                noise_factor: None,
             }],
+            income_statement: vec![],
         };
 
-        let chart = ChartOfAccounts::from_history(&history);
+        let chart = ChartOfAccounts::from_config(&config);
         let markdown = chart.to_markdown();
 
         assert!(markdown.contains("# Chart of Accounts - Test Corp"));
@@ -350,25 +364,24 @@ mod tests {
 
     #[test]
     fn test_chart_to_csv() {
-        let history = SparseFinancialHistory {
+        let config = FinancialHistoryConfig {
             organization_name: "Test Corp".to_string(),
             fiscal_year_end_month: 12,
-            accounts: vec![SparseAccount {
+            balance_sheet: vec![BalanceSheetAccount {
                 name: "Cash".to_string(),
                 account_type: AccountType::Asset,
-                behavior: AccountBehavior::Stock,
-                interpolation: InterpolationMethod::Linear,
-                noise_factor: None,
-                anchors: vec![AnchorPoint {
+                method: InterpolationMethod::Linear,
+                snapshots: vec![BalanceSheetSnapshot {
                     date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                     value: 10000.0,
-                    anchor_type: AnchorType::Cumulative,
                 }],
                 is_balancing_account: true,
+                noise_factor: None,
             }],
+            income_statement: vec![],
         };
 
-        let chart = ChartOfAccounts::from_history(&history);
+        let chart = ChartOfAccounts::from_config(&config);
         let csv = chart.to_csv();
 
         assert!(csv.contains("Section,Account Name"));
