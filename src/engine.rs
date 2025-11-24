@@ -58,7 +58,7 @@ impl Densifier {
 
         let mut series = BTreeMap::new();
         let mut rng = thread_rng();
-        let noise_factor = account.noise_factor.unwrap_or(0.0);
+        let noise_factor = account.noise_factor;
 
         for date in dates {
             let t = date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp() as f64;
@@ -137,7 +137,7 @@ impl Densifier {
         constraints.sort_by_key(|c| (c.end_date - c.start_date).num_days());
 
         let mut rng = thread_rng();
-        let noise = account.noise_factor.unwrap_or(0.0);
+        let noise = account.noise_factor;
 
         for constraint in constraints {
             let constraint_dates =
@@ -310,7 +310,7 @@ mod tests {
                     source: None,
                 },
             ],
-            noise_factor: None,
+            noise_factor: 0.0,
         };
 
         let densifier = Densifier::new(12);
@@ -379,7 +379,7 @@ mod tests {
                 },
             ],
             is_balancing_account: false,
-            noise_factor: None,
+            noise_factor: 0.0,
         };
 
         let densifier = Densifier::new(12);
@@ -422,7 +422,7 @@ mod tests {
                     },
                 ],
                 is_balancing_account: true,
-                noise_factor: None,
+                noise_factor: 0.0,
             }],
             income_statement: vec![IncomeStatementAccount {
                 name: "Revenue".to_string(),
@@ -434,7 +434,7 @@ mod tests {
                     value: 120000.0,
                     source: None,
                 }],
-                noise_factor: None,
+                noise_factor: 0.0,
             }],
         };
 

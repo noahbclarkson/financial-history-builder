@@ -300,7 +300,7 @@ mod tests {
                     source: None,
                 }],
                 is_balancing_account: true,
-                noise_factor: None,
+                noise_factor: 0.0,
             }],
             income_statement: vec![IncomeStatementAccount {
                 name: "Revenue".to_string(),
@@ -312,7 +312,7 @@ mod tests {
                     value: 100000.0,
                     source: None,
                 }],
-                noise_factor: None,
+                noise_factor: 0.0,
             }],
         };
 
@@ -343,7 +343,7 @@ mod tests {
                     source: None,
                 }],
                 is_balancing_account: true,
-                noise_factor: None,
+                noise_factor: 0.0,
             }],
             income_statement: vec![],
         };
@@ -371,7 +371,7 @@ mod tests {
                     source: None,
                 }],
                 is_balancing_account: true,
-                noise_factor: None,
+                noise_factor: 0.0,
             }],
             income_statement: vec![],
         };

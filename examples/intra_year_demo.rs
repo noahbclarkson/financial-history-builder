@@ -28,7 +28,7 @@ fn main() {
                 },
             ],
             is_balancing_account: true,
-            noise_factor: None,
+            noise_factor: 0.0,
         }],
         income_statement: vec![IncomeStatementAccount {
             name: "Salaries".to_string(),
@@ -48,7 +48,7 @@ fn main() {
                     source: None,
                 },
             ],
-            noise_factor: None,
+            noise_factor: 0.0,
         }],
     };
 

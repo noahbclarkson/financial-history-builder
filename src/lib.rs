@@ -38,7 +38,7 @@
 //!                 },
 //!             ],
 //!             is_balancing_account: true,
-//!             noise_factor: Some(0.02),
+//!             noise_factor: 0.02,
 //!         },
 //!     ],
 //!     income_statement: vec![
@@ -54,7 +54,7 @@
 //!                     source: None,
 //!                 },
 //!             ],
-//!             noise_factor: Some(0.05),
+//!             noise_factor: 0.05,
 //!         },
 //!     ],
 //! };
@@ -70,6 +70,9 @@ pub mod ingestion;
 pub mod schema;
 pub mod seasonality;
 pub mod utils;
+
+#[cfg(feature = "gemini")]
+pub mod llm;
 
 pub use balancer::{
     enforce_accounting_equation, verify_accounting_equation, AccountingBalancer, VerificationResult,
@@ -148,58 +151,30 @@ pub fn process_with_verification(
 }
 
 fn validate_config_integrity(config: &FinancialHistoryConfig) -> Result<()> {
-    let mut errors = Vec::new();
-
     for account in &config.income_statement {
-        for constraint in &account.constraints {
+        for (idx, constraint) in account.constraints.iter().enumerate() {
             if constraint.end_date < constraint.start_date {
-                errors.push(format!(
-                    "Account '{}': End date {} is before start date {}",
-                    account.name, constraint.end_date, constraint.start_date
-                ));
+                return Err(FinancialHistoryError::ValidationError {
+                    account: account.name.clone(),
+                    details: format!(
+                        "Constraint #{} has end_date {} which is before start_date {}. Dates must be chronological.",
+                        idx, constraint.end_date, constraint.start_date
+                    ),
+                });
             }
         }
     }
 
-    let forbidden_terms = vec![
-        "total assets",
-        "total liabilities",
-        "total equity",
-        "total revenue",
-        "gross profit",
-        "net income",
-        "total operating expenses",
-        "total expenses",
-        "ebitda",
-        "current assets",
-        "fixed assets",
-        "non-current assets",
-        "current liabilities",
-        "non-current liabilities",
-    ];
-
     for account in &config.balance_sheet {
-        let name_lower = account.name.to_lowercase();
-        if forbidden_terms.iter().any(|t| name_lower.contains(t)) {
-            errors.push(format!(
-                "Forbidden account detected: '{}'. Do not extract totals/subtotals.",
-                account.name
-            ));
+        if account.noise_factor < 0.0 || account.noise_factor > 1.0 {
+            return Err(FinancialHistoryError::InvalidNoiseFactor(account.noise_factor));
         }
     }
 
     for account in &config.income_statement {
-        let name_lower = account.name.to_lowercase();
-        if forbidden_terms.iter().any(|t| name_lower.contains(t)) {
-            errors.push(format!(
-                "Forbidden account detected: '{}'. Do not extract totals/subtotals.",
-                account.name
-            ));
+        if account.noise_factor < 0.0 || account.noise_factor > 1.0 {
+            return Err(FinancialHistoryError::InvalidNoiseFactor(account.noise_factor));
         }
-    }
-
-    if !errors.is_empty() {
-        return Err(FinancialHistoryError::InvalidAnchor(errors.join("; ")));
     }
 
     Ok(())
@@ -250,7 +225,7 @@ mod tests {
                         },
                     ],
                     is_balancing_account: true,
-                    noise_factor: Some(0.02),
+                    noise_factor: 0.02,
                 },
                 BalanceSheetAccount {
                     name: "Accounts Payable".to_string(),
@@ -269,7 +244,7 @@ mod tests {
                         },
                     ],
                     is_balancing_account: false,
-                    noise_factor: Some(0.01),
+                    noise_factor: 0.01,
                 },
                 BalanceSheetAccount {
                     name: "Share Capital".to_string(),
@@ -288,7 +263,7 @@ mod tests {
                         },
                     ],
                     is_balancing_account: false,
-                    noise_factor: None,
+                    noise_factor: 0.0,
                 },
             ],
             income_statement: vec![],
@@ -325,7 +300,7 @@ mod tests {
                     value: 1_200_000.0,
                     source: None,
                 }],
-                noise_factor: None,
+                noise_factor: 0.0,
             }],
         };
 
@@ -371,7 +346,7 @@ mod tests {
                         source: None,
                     },
                 ],
-                noise_factor: None,
+                noise_factor: 0.0,
             }],
         };
 

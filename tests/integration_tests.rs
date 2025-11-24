@@ -70,7 +70,7 @@ fn test_comprehensive_retail_business() {
                     },
                 ],
                 is_balancing_account: true,
-                noise_factor: Some(0.03),
+                noise_factor: 0.03,
             },
             BalanceSheetAccount {
                 name: "Inventory".to_string(),
@@ -94,7 +94,7 @@ fn test_comprehensive_retail_business() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: Some(0.05),
+                noise_factor: 0.05,
             },
             BalanceSheetAccount {
                 name: "Accounts Receivable".to_string(),
@@ -118,7 +118,7 @@ fn test_comprehensive_retail_business() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: Some(0.04),
+                noise_factor: 0.04,
             },
             BalanceSheetAccount {
                 name: "Equipment".to_string(),
@@ -142,7 +142,7 @@ fn test_comprehensive_retail_business() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: None,
+                noise_factor: 0.0,
             },
             BalanceSheetAccount {
                 name: "Accounts Payable".to_string(),
@@ -166,7 +166,7 @@ fn test_comprehensive_retail_business() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: Some(0.03),
+                noise_factor: 0.03,
             },
             BalanceSheetAccount {
                 name: "Bank Loan".to_string(),
@@ -190,7 +190,7 @@ fn test_comprehensive_retail_business() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: None,
+                noise_factor: 0.0,
             },
             BalanceSheetAccount {
                 name: "Share Capital".to_string(),
@@ -214,7 +214,7 @@ fn test_comprehensive_retail_business() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: None,
+                noise_factor: 0.0,
             },
         ],
         income_statement: vec![
@@ -236,7 +236,7 @@ fn test_comprehensive_retail_business() {
                         source: None,
                     },
                 ],
-                noise_factor: Some(0.05),
+                noise_factor: 0.05,
             },
             IncomeStatementAccount {
                 name: "Cost of Goods Sold".to_string(),
@@ -256,7 +256,7 @@ fn test_comprehensive_retail_business() {
                         source: None,
                     },
                 ],
-                noise_factor: Some(0.04),
+                noise_factor: 0.04,
             },
             IncomeStatementAccount {
                 name: "Store Rent".to_string(),
@@ -276,7 +276,7 @@ fn test_comprehensive_retail_business() {
                         source: None,
                     },
                 ],
-                noise_factor: None,
+                noise_factor: 0.0,
             },
             IncomeStatementAccount {
                 name: "Salaries & Wages".to_string(),
@@ -296,7 +296,7 @@ fn test_comprehensive_retail_business() {
                         source: None,
                     },
                 ],
-                noise_factor: Some(0.02),
+                noise_factor: 0.02,
             },
             IncomeStatementAccount {
                 name: "Marketing Expenses".to_string(),
@@ -316,7 +316,7 @@ fn test_comprehensive_retail_business() {
                         source: None,
                     },
                 ],
-                noise_factor: Some(0.08),
+                noise_factor: 0.08,
             },
         ],
     };
@@ -369,7 +369,7 @@ fn test_saas_startup() {
                     },
                 ],
                 is_balancing_account: true,
-                noise_factor: Some(0.04),
+                noise_factor: 0.04,
             },
             BalanceSheetAccount {
                 name: "Accounts Receivable".to_string(),
@@ -393,7 +393,7 @@ fn test_saas_startup() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: Some(0.05),
+                noise_factor: 0.05,
             },
             BalanceSheetAccount {
                 name: "Accounts Payable".to_string(),
@@ -417,7 +417,7 @@ fn test_saas_startup() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: Some(0.03),
+                noise_factor: 0.03,
             },
             BalanceSheetAccount {
                 name: "Deferred Revenue".to_string(),
@@ -441,7 +441,7 @@ fn test_saas_startup() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: Some(0.04),
+                noise_factor: 0.04,
             },
             BalanceSheetAccount {
                 name: "Share Capital".to_string(),
@@ -460,7 +460,7 @@ fn test_saas_startup() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: None,
+                noise_factor: 0.0,
             },
         ],
         income_statement: vec![
@@ -482,7 +482,7 @@ fn test_saas_startup() {
                         source: None,
                     },
                 ],
-                noise_factor: Some(0.03),
+                noise_factor: 0.03,
             },
             IncomeStatementAccount {
                 name: "Professional Services".to_string(),
@@ -502,7 +502,7 @@ fn test_saas_startup() {
                         source: None,
                     },
                 ],
-                noise_factor: Some(0.06),
+                noise_factor: 0.06,
             },
             IncomeStatementAccount {
                 name: "Cloud Infrastructure Costs".to_string(),
@@ -522,7 +522,7 @@ fn test_saas_startup() {
                         source: None,
                     },
                 ],
-                noise_factor: Some(0.02),
+                noise_factor: 0.02,
             },
             IncomeStatementAccount {
                 name: "Engineering Salaries".to_string(),
@@ -542,7 +542,7 @@ fn test_saas_startup() {
                         source: None,
                     },
                 ],
-                noise_factor: Some(0.01),
+                noise_factor: 0.01,
             },
             IncomeStatementAccount {
                 name: "Sales & Marketing".to_string(),
@@ -562,7 +562,7 @@ fn test_saas_startup() {
                         source: None,
                     },
                 ],
-                noise_factor: Some(0.07),
+                noise_factor: 0.07,
             },
             IncomeStatementAccount {
                 name: "Office & Admin".to_string(),
@@ -582,7 +582,7 @@ fn test_saas_startup() {
                         source: None,
                     },
                 ],
-                noise_factor: Some(0.03),
+                noise_factor: 0.03,
             },
         ],
     };
@@ -625,7 +625,7 @@ fn test_hospitality_business() {
                     },
                 ],
                 is_balancing_account: true,
-                noise_factor: Some(0.05),
+                noise_factor: 0.05,
             },
             BalanceSheetAccount {
                 name: "Property & Equipment".to_string(),
@@ -644,7 +644,7 @@ fn test_hospitality_business() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: None,
+                noise_factor: 0.0,
             },
             BalanceSheetAccount {
                 name: "Trade Payables".to_string(),
@@ -663,7 +663,7 @@ fn test_hospitality_business() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: Some(0.04),
+                noise_factor: 0.04,
             },
             BalanceSheetAccount {
                 name: "Mortgage".to_string(),
@@ -682,7 +682,7 @@ fn test_hospitality_business() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: None,
+                noise_factor: 0.0,
             },
             BalanceSheetAccount {
                 name: "Owner's Equity".to_string(),
@@ -694,7 +694,7 @@ fn test_hospitality_business() {
                     source: None,
                 }],
                 is_balancing_account: false,
-                noise_factor: None,
+                noise_factor: 0.0,
             },
         ],
         income_statement: vec![
@@ -708,7 +708,7 @@ fn test_hospitality_business() {
                     value: 1_800_000.0,
                     source: None,
                 }],
-                noise_factor: Some(0.06),
+                noise_factor: 0.06,
             },
             IncomeStatementAccount {
                 name: "Food & Beverage Revenue".to_string(),
@@ -720,7 +720,7 @@ fn test_hospitality_business() {
                     value: 600_000.0,
                     source: None,
                 }],
-                noise_factor: Some(0.07),
+                noise_factor: 0.07,
             },
             IncomeStatementAccount {
                 name: "F&B Cost of Sales".to_string(),
@@ -732,7 +732,7 @@ fn test_hospitality_business() {
                     value: 210_000.0,
                     source: None,
                 }],
-                noise_factor: Some(0.04),
+                noise_factor: 0.04,
             },
             IncomeStatementAccount {
                 name: "Staff Wages".to_string(),
@@ -744,7 +744,7 @@ fn test_hospitality_business() {
                     value: 720_000.0,
                     source: None,
                 }],
-                noise_factor: Some(0.03),
+                noise_factor: 0.03,
             },
             IncomeStatementAccount {
                 name: "Utilities".to_string(),
@@ -756,7 +756,7 @@ fn test_hospitality_business() {
                     value: 120_000.0,
                     source: None,
                 }],
-                noise_factor: Some(0.05),
+                noise_factor: 0.05,
             },
             IncomeStatementAccount {
                 name: "Property Lease".to_string(),
@@ -768,7 +768,7 @@ fn test_hospitality_business() {
                     value: 240_000.0,
                     source: None,
                 }],
-                noise_factor: None,
+                noise_factor: 0.0,
             },
         ],
     };
@@ -815,7 +815,7 @@ fn test_designated_balancing_account() {
                     source: None,
                 }],
                 is_balancing_account: true,
-                noise_factor: None,
+                noise_factor: 0.0,
             },
             BalanceSheetAccount {
                 name: "Accounts Receivable".to_string(),
@@ -834,7 +834,7 @@ fn test_designated_balancing_account() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: Some(0.02),
+                noise_factor: 0.02,
             },
             BalanceSheetAccount {
                 name: "Accounts Payable".to_string(),
@@ -853,7 +853,7 @@ fn test_designated_balancing_account() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: Some(0.01),
+                noise_factor: 0.01,
             },
             BalanceSheetAccount {
                 name: "Share Capital".to_string(),
@@ -872,7 +872,7 @@ fn test_designated_balancing_account() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: None,
+                noise_factor: 0.0,
             },
         ],
         income_statement: vec![],
@@ -936,7 +936,7 @@ fn test_retained_earnings_integrity_check() {
                     },
                 ],
                 is_balancing_account: true,
-                noise_factor: None,
+                noise_factor: 0.0,
             },
             BalanceSheetAccount {
                 name: "Retained Earnings".to_string(),
@@ -955,7 +955,7 @@ fn test_retained_earnings_integrity_check() {
                     },
                 ],
                 is_balancing_account: false,
-                noise_factor: None,
+                noise_factor: 0.0,
             },
         ],
         income_statement: vec![IncomeStatementAccount {
@@ -968,7 +968,7 @@ fn test_retained_earnings_integrity_check() {
                 value: 100_000.0,
                 source: None,
             }],
-            noise_factor: None,
+            noise_factor: 0.0,
         }],
     };
 
@@ -1006,7 +1006,7 @@ fn test_hierarchical_constraints() {
                 },
             ],
             is_balancing_account: true,
-            noise_factor: None,
+            noise_factor: 0.0,
         }],
         income_statement: vec![IncomeStatementAccount {
             name: "Sales".to_string(),
@@ -1032,7 +1032,7 @@ fn test_hierarchical_constraints() {
                     source: None,
                 },
             ],
-            noise_factor: None,
+            noise_factor: 0.0,
         }],
     };
 
@@ -1090,7 +1090,7 @@ fn test_quarterly_constraints() {
                 },
             ],
             is_balancing_account: true,
-            noise_factor: None,
+            noise_factor: 0.0,
         }],
         income_statement: vec![IncomeStatementAccount {
             name: "Sales A".to_string(),
@@ -1110,7 +1110,7 @@ fn test_quarterly_constraints() {
                     source: None,
                 },
             ],
-            noise_factor: None,
+            noise_factor: 0.0,
         }],
     };
 

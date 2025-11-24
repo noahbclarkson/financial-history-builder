@@ -9,6 +9,12 @@ pub enum FinancialHistoryError {
     #[error("No anchors provided for account: {0}")]
     NoAnchors(String),
 
+    #[error("Validation Error in Account '{account}': {details}")]
+    ValidationError {
+        account: String,
+        details: String,
+    },
+
     #[error("Invalid noise factor {0}: must be between 0.0 and 1.0")]
     InvalidNoiseFactor(f64),
 
@@ -38,6 +44,18 @@ pub enum FinancialHistoryError {
 
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+
+    #[cfg(feature = "gemini")]
+    #[error("HTTP error: {0}")]
+    HttpError(#[from] reqwest::Error),
+
+    #[cfg(feature = "gemini")]
+    #[error("JSON Patch error: {0}")]
+    JsonPatchError(#[from] json_patch::PatchError),
+
+    #[cfg(feature = "gemini")]
+    #[error("Extraction failed: {0}")]
+    ExtractionFailed(String),
 }
 
 pub type Result<T> = std::result::Result<T, FinancialHistoryError>;

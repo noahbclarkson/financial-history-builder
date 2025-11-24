@@ -144,10 +144,11 @@ pub struct BalanceSheetAccount {
     )]
     pub is_balancing_account: bool,
 
+    #[serde(default)]
     #[schemars(
-        description = "Optional variance to add realistic noise. Range: 0.0 (no noise) to 0.1 (10% random variation). Use 0.0 for fixed items. Use 0.01-0.02 for stable balance sheet accounts."
+        description = "Optional variance to add realistic noise. Range: 0.0 (no noise) to 0.1 (10% random variation). Defaults to 0.0. Use 0.0 for fixed items. Use 0.01-0.02 for stable balance sheet accounts."
     )]
-    pub noise_factor: Option<f64>,
+    pub noise_factor: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -194,10 +195,11 @@ pub struct IncomeStatementAccount {
     )]
     pub constraints: Vec<PeriodConstraint>,
 
+    #[serde(default)]
     #[schemars(
-        description = "Optional variance to add realistic noise. Range: 0.0 (no noise) to 0.1 (10% random variation). Use 0.0 for fixed costs. Use 0.03-0.05 for normal revenues/expenses."
+        description = "Optional variance to add realistic noise. Range: 0.0 (no noise) to 0.1 (10% random variation). Defaults to 0.0. Use 0.0 for fixed costs. Use 0.03-0.05 for normal revenues/expenses."
     )]
-    pub noise_factor: Option<f64>,
+    pub noise_factor: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -229,6 +231,11 @@ impl FinancialHistoryConfig {
     pub fn schema_as_json() -> Result<String, serde_json::Error> {
         let schema = Self::generate_json_schema();
         serde_json::to_string_pretty(&schema)
+    }
+
+    pub fn schema_as_json_value() -> Result<serde_json::Value, serde_json::Error> {
+        let schema = Self::generate_json_schema();
+        serde_json::to_value(schema)
     }
 }
 
@@ -268,7 +275,7 @@ mod tests {
                     },
                 ],
                 is_balancing_account: true,
-                noise_factor: Some(0.02),
+                noise_factor: 0.02,
             }],
             income_statement: vec![IncomeStatementAccount {
                 name: "Revenue".to_string(),
@@ -280,7 +287,7 @@ mod tests {
                     value: 1200000.0,
                     source: None,
                 }],
-                noise_factor: Some(0.05),
+                noise_factor: 0.05,
             }],
         };
 

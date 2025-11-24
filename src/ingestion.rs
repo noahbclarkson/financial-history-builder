@@ -34,7 +34,7 @@ pub fn convert_tb_to_config(
                         method: InterpolationMethod::Linear,
                         snapshots: Vec::new(),
                         is_balancing_account: false,
-                        noise_factor: None,
+                        noise_factor: 0.0,
                     });
 
                 account.snapshots.push(BalanceSheetSnapshot {
@@ -54,7 +54,7 @@ pub fn convert_tb_to_config(
                         account_type: row.account_type.clone(),
                         seasonality_profile: SeasonalityProfileId::Flat,
                         constraints: Vec::new(),
-                        noise_factor: None,
+                        noise_factor: 0.0,
                     });
 
                 let fiscal_year_start =
