@@ -1,5 +1,5 @@
-use crate::engine::DenseSeries;
 use crate::schema::{AccountType, FinancialHistoryConfig};
+use crate::DenseSeries;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -96,7 +96,10 @@ impl ChartOfAccounts {
 
         for account_name in dense_data.keys() {
             let is_in_balance_sheet = config.balance_sheet.iter().any(|a| a.name == *account_name);
-            let is_in_income_statement = config.income_statement.iter().any(|a| a.name == *account_name);
+            let is_in_income_statement = config
+                .income_statement
+                .iter()
+                .any(|a| a.name == *account_name);
 
             if !is_in_balance_sheet && !is_in_income_statement {
                 let entry = AccountEntry {
@@ -125,63 +128,49 @@ impl ChartOfAccounts {
         for account in &self.assets {
             output.push_str(&format!(
                 "Assets,{},{:?},{}\n",
-                account.name,
-                account.account_type,
-                account.is_balancing_account
+                account.name, account.account_type, account.is_balancing_account
             ));
         }
 
         for account in &self.liabilities {
             output.push_str(&format!(
                 "Liabilities,{},{:?},{}\n",
-                account.name,
-                account.account_type,
-                account.is_balancing_account
+                account.name, account.account_type, account.is_balancing_account
             ));
         }
 
         for account in &self.equity {
             output.push_str(&format!(
                 "Equity,{},{:?},{}\n",
-                account.name,
-                account.account_type,
-                account.is_balancing_account
+                account.name, account.account_type, account.is_balancing_account
             ));
         }
 
         for account in &self.revenue {
             output.push_str(&format!(
                 "Revenue,{},{:?},{}\n",
-                account.name,
-                account.account_type,
-                account.is_balancing_account
+                account.name, account.account_type, account.is_balancing_account
             ));
         }
 
         for account in &self.cost_of_sales {
             output.push_str(&format!(
                 "Cost of Sales,{},{:?},{}\n",
-                account.name,
-                account.account_type,
-                account.is_balancing_account
+                account.name, account.account_type, account.is_balancing_account
             ));
         }
 
         for account in &self.operating_expenses {
             output.push_str(&format!(
                 "Operating Expenses,{},{:?},{}\n",
-                account.name,
-                account.account_type,
-                account.is_balancing_account
+                account.name, account.account_type, account.is_balancing_account
             ));
         }
 
         for account in &self.other_income {
             output.push_str(&format!(
                 "Other Income,{},{:?},{}\n",
-                account.name,
-                account.account_type,
-                account.is_balancing_account
+                account.name, account.account_type, account.is_balancing_account
             ));
         }
 
@@ -191,7 +180,10 @@ impl ChartOfAccounts {
     pub fn to_markdown(&self) -> String {
         let mut output = String::new();
 
-        output.push_str(&format!("# Chart of Accounts - {}\n\n", self.organization_name));
+        output.push_str(&format!(
+            "# Chart of Accounts - {}\n\n",
+            self.organization_name
+        ));
         output.push_str(&format!(
             "**Fiscal Year End:** Month {}\n\n",
             self.fiscal_year_end_month
@@ -287,7 +279,10 @@ impl ChartOfAccounts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::{BalanceSheetAccount, BalanceSheetSnapshot, IncomeStatementAccount, InterpolationMethod, PeriodConstraint, SeasonalityProfileId};
+    use crate::schema::{
+        BalanceSheetAccount, BalanceSheetSnapshot, IncomeStatementAccount, InterpolationMethod,
+        PeriodConstraint, SeasonalityProfileId,
+    };
     use chrono::NaiveDate;
 
     #[test]
@@ -295,32 +290,30 @@ mod tests {
         let config = FinancialHistoryConfig {
             organization_name: "Test Corp".to_string(),
             fiscal_year_end_month: 12,
-            balance_sheet: vec![
-                BalanceSheetAccount {
-                    name: "Cash".to_string(),
-                    account_type: AccountType::Asset,
-                    method: InterpolationMethod::Linear,
-                    snapshots: vec![BalanceSheetSnapshot {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 10000.0,
-                    }],
-                    is_balancing_account: true,
-                    noise_factor: None,
-                },
-            ],
-            income_statement: vec![
-                IncomeStatementAccount {
-                    name: "Revenue".to_string(),
-                    account_type: AccountType::Revenue,
-                    seasonality_profile: SeasonalityProfileId::Flat,
-                    constraints: vec![PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 100000.0,
-                    }],
-                    noise_factor: None,
-                },
-            ],
+            balance_sheet: vec![BalanceSheetAccount {
+                name: "Cash".to_string(),
+                account_type: AccountType::Asset,
+                method: InterpolationMethod::Linear,
+                snapshots: vec![BalanceSheetSnapshot {
+                    date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    value: 10000.0,
+                    source: None,
+                }],
+                is_balancing_account: true,
+                noise_factor: None,
+            }],
+            income_statement: vec![IncomeStatementAccount {
+                name: "Revenue".to_string(),
+                account_type: AccountType::Revenue,
+                seasonality_profile: SeasonalityProfileId::Flat,
+                constraints: vec![PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    value: 100000.0,
+                    source: None,
+                }],
+                noise_factor: None,
+            }],
         };
 
         let chart = ChartOfAccounts::from_config(&config);
@@ -347,6 +340,7 @@ mod tests {
                 snapshots: vec![BalanceSheetSnapshot {
                     date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                     value: 10000.0,
+                    source: None,
                 }],
                 is_balancing_account: true,
                 noise_factor: None,
@@ -374,6 +368,7 @@ mod tests {
                 snapshots: vec![BalanceSheetSnapshot {
                     date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                     value: 10000.0,
+                    source: None,
                 }],
                 is_balancing_account: true,
                 noise_factor: None,

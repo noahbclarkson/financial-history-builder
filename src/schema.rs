@@ -2,13 +2,28 @@ use chrono::NaiveDate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SourceMetadata {
+    #[schemars(description = "The name of the file (PDF/Excel) this data came from.")]
+    pub document_name: String,
+
+    #[schemars(
+        description = "The specific text snippet containing this value. NOTE: For values extracted from large tables, leave this field blank to reduce token usage."
+    )]
+    pub original_text: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "PascalCase")]
 pub enum AccountType {
-    #[schemars(description = "Revenue from sales of goods or services (Income Statement, credit balance)")]
+    #[schemars(
+        description = "Revenue from sales of goods or services (Income Statement, credit balance)"
+    )]
     Revenue,
 
-    #[schemars(description = "Direct costs attributable to production of goods sold (Income Statement, debit balance)")]
+    #[schemars(
+        description = "Direct costs attributable to production of goods sold (Income Statement, debit balance)"
+    )]
     CostOfSales,
 
     #[schemars(
@@ -76,20 +91,32 @@ pub struct BalanceSheetSnapshot {
     #[schemars(description = "The date of the snapshot (e.g., 2023-12-31). Use month-end dates.")]
     pub date: NaiveDate,
 
-    #[schemars(description = "The value of the account on this specific date (point-in-time balance)")]
+    #[schemars(
+        description = "The value of the account on this specific date (point-in-time balance)"
+    )]
     pub value: f64,
+
+    #[serde(default)]
+    #[schemars(description = "Metadata to trace this value back to the source document.")]
+    pub source: Option<SourceMetadata>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(rename_all = "PascalCase")]
 pub enum InterpolationMethod {
-    #[schemars(description = "Draw straight lines between snapshots. Good for accounts that change steadily.")]
+    #[schemars(
+        description = "Draw straight lines between snapshots. Good for accounts that change steadily."
+    )]
     Linear,
 
-    #[schemars(description = "Hold value until it changes. Ideal for accounts that remain constant between snapshots.")]
+    #[schemars(
+        description = "Hold value until it changes. Ideal for accounts that remain constant between snapshots."
+    )]
     Step,
 
-    #[schemars(description = "Smooth curve (Catmull-Rom) between snapshots. Best for organic changes in balance sheet accounts.")]
+    #[schemars(
+        description = "Smooth curve (Catmull-Rom) between snapshots. Best for organic changes in balance sheet accounts."
+    )]
     Curve,
 }
 
@@ -106,7 +133,9 @@ pub struct BalanceSheetAccount {
     #[schemars(description = "How to interpolate values between snapshots")]
     pub method: InterpolationMethod,
 
-    #[schemars(description = "Array of known balance sheet snapshots. Must have at least one snapshot. These are point-in-time balances, not cumulative totals.")]
+    #[schemars(
+        description = "Array of known balance sheet snapshots. Must have at least one snapshot. These are point-in-time balances, not cumulative totals."
+    )]
     pub snapshots: Vec<BalanceSheetSnapshot>,
 
     #[serde(default)]
@@ -123,14 +152,24 @@ pub struct BalanceSheetAccount {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PeriodConstraint {
-    #[schemars(description = "Start of the period (inclusive). MUST be before or equal to end_date. For a month, use the first day (e.g., 2023-01-01). For a quarter, use the first day of the quarter. For a year, use the fiscal year start.")]
+    #[schemars(
+        description = "Start of the period (inclusive). MUST be before or equal to end_date. For a month, use the first day (e.g., 2023-01-01). For a quarter, use the first day of the quarter. For a year, use the fiscal year start."
+    )]
     pub start_date: NaiveDate,
 
-    #[schemars(description = "End of the period (inclusive). MUST be after or equal to start_date. For a month, use the last day (e.g., 2023-01-31). For a quarter, use the quarter end. For a year, use the fiscal year end.")]
+    #[schemars(
+        description = "End of the period (inclusive). MUST be after or equal to start_date. For a month, use the last day (e.g., 2023-01-31). For a quarter, use the quarter end. For a year, use the fiscal year end."
+    )]
     pub end_date: NaiveDate,
 
-    #[schemars(description = "Total value generated during this specific period. If the document lists 'Gross Profit' or 'Net Income', DO NOT extract them. Only extract Revenue and specific Expense categories. You can provide overlapping periods (e.g., a month total AND a quarter total AND a year total). The engine will solve them hierarchically.")]
+    #[schemars(
+        description = "Total value generated during this specific period. If the document lists 'Gross Profit' or 'Net Income', DO NOT extract them. Only extract Revenue and specific Expense categories. You can provide overlapping periods (e.g., a month total AND a quarter total AND a year total). The engine will solve them hierarchically."
+    )]
     pub value: f64,
+
+    #[serde(default)]
+    #[schemars(description = "Metadata to trace this value back to the source document.")]
+    pub source: Option<SourceMetadata>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -140,13 +179,19 @@ pub struct IncomeStatementAccount {
     )]
     pub name: String,
 
-    #[schemars(description = "The type of account (Revenue, CostOfSales, OperatingExpense, or OtherIncome)")]
+    #[schemars(
+        description = "The type of account (Revenue, CostOfSales, OperatingExpense, or OtherIncome)"
+    )]
     pub account_type: AccountType,
 
-    #[schemars(description = "Defines the shape of the data when filling in gaps between constraints. This determines how the engine distributes values across months.")]
+    #[schemars(
+        description = "Defines the shape of the data when filling in gaps between constraints. This determines how the engine distributes values across months."
+    )]
     pub seasonality_profile: SeasonalityProfileId,
 
-    #[schemars(description = "List of known totals for specific periods (Months, Quarters, or Years). You can and should provide overlapping periods - the engine will solve them hierarchically. For example, provide both a monthly total AND a quarterly total AND a yearly total if available.")]
+    #[schemars(
+        description = "List of known totals for specific periods (Months, Quarters, or Years). You can and should provide overlapping periods - the engine will solve them hierarchically. For example, provide both a monthly total AND a quarterly total AND a yearly total if available."
+    )]
     pub constraints: Vec<PeriodConstraint>,
 
     #[schemars(
@@ -165,10 +210,14 @@ pub struct FinancialHistoryConfig {
     )]
     pub fiscal_year_end_month: u32,
 
-    #[schemars(description = "Array of Balance Sheet accounts (Assets, Liabilities, Equity) with their snapshots")]
+    #[schemars(
+        description = "Array of Balance Sheet accounts (Assets, Liabilities, Equity) with their snapshots"
+    )]
     pub balance_sheet: Vec<BalanceSheetAccount>,
 
-    #[schemars(description = "Array of Income Statement accounts (Revenue, Expenses) with their period constraints")]
+    #[schemars(
+        description = "Array of Income Statement accounts (Revenue, Expenses) with their period constraints"
+    )]
     pub income_statement: Vec<IncomeStatementAccount>,
 }
 
@@ -210,10 +259,12 @@ mod tests {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 50000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 75000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: true,
@@ -227,6 +278,7 @@ mod tests {
                     start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                     end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                     value: 1200000.0,
+                    source: None,
                 }],
                 noise_factor: Some(0.05),
             }],

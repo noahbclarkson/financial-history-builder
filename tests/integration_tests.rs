@@ -32,7 +32,7 @@ fn export_to_csv(
             let value = dense_data
                 .get(name)
                 .and_then(|series| series.get(date))
-                .copied()
+                .map(|point| point.value)
                 .unwrap_or(0.0);
             write!(file, ",{:.2}", value)?;
         }
@@ -56,14 +56,17 @@ fn test_comprehensive_retail_business() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 150_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 180_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 250_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: true,
@@ -77,14 +80,17 @@ fn test_comprehensive_retail_business() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 200_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 240_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 300_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -98,14 +104,17 @@ fn test_comprehensive_retail_business() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 80_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 100_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 130_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -119,14 +128,17 @@ fn test_comprehensive_retail_business() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 100_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 95_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 90_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -140,14 +152,17 @@ fn test_comprehensive_retail_business() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 60_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 75_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 95_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -161,14 +176,17 @@ fn test_comprehensive_retail_business() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 200_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 180_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 160_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -182,14 +200,17 @@ fn test_comprehensive_retail_business() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 250_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 250_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 250_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -206,11 +227,13 @@ fn test_comprehensive_retail_business() {
                         start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 2_400_000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 3_000_000.0,
+                        source: None,
                     },
                 ],
                 noise_factor: Some(0.05),
@@ -224,11 +247,13 @@ fn test_comprehensive_retail_business() {
                         start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 1_440_000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 1_800_000.0,
+                        source: None,
                     },
                 ],
                 noise_factor: Some(0.04),
@@ -242,11 +267,13 @@ fn test_comprehensive_retail_business() {
                         start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 120_000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 132_000.0,
+                        source: None,
                     },
                 ],
                 noise_factor: None,
@@ -260,11 +287,13 @@ fn test_comprehensive_retail_business() {
                         start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 480_000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 540_000.0,
+                        source: None,
                     },
                 ],
                 noise_factor: Some(0.02),
@@ -278,11 +307,13 @@ fn test_comprehensive_retail_business() {
                         start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 144_000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 180_000.0,
+                        source: None,
                     },
                 ],
                 noise_factor: Some(0.08),
@@ -299,7 +330,7 @@ fn test_comprehensive_retail_business() {
         .unwrap()
         .iter()
         .filter(|(date, _)| date.year() == 2022)
-        .map(|(_, value)| value)
+        .map(|(_, point)| point.value)
         .sum();
 
     assert!((sales_total_2022 - 2_400_000.0).abs() < 1.0);
@@ -324,14 +355,17 @@ fn test_saas_startup() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 500_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 350_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 200_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: true,
@@ -345,14 +379,17 @@ fn test_saas_startup() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 50_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 75_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 125_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -366,14 +403,17 @@ fn test_saas_startup() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 40_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 55_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 75_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -387,14 +427,17 @@ fn test_saas_startup() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 100_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 150_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 250_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -408,10 +451,12 @@ fn test_saas_startup() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2022, 1, 31).unwrap(),
                         value: 1_000_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 1_500_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -428,11 +473,13 @@ fn test_saas_startup() {
                         start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 600_000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 1_200_000.0,
+                        source: None,
                     },
                 ],
                 noise_factor: Some(0.03),
@@ -446,11 +493,13 @@ fn test_saas_startup() {
                         start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 150_000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 300_000.0,
+                        source: None,
                     },
                 ],
                 noise_factor: Some(0.06),
@@ -464,11 +513,13 @@ fn test_saas_startup() {
                         start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 120_000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 240_000.0,
+                        source: None,
                     },
                 ],
                 noise_factor: Some(0.02),
@@ -482,11 +533,13 @@ fn test_saas_startup() {
                         start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 720_000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 960_000.0,
+                        source: None,
                     },
                 ],
                 noise_factor: Some(0.01),
@@ -500,11 +553,13 @@ fn test_saas_startup() {
                         start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 300_000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 480_000.0,
+                        source: None,
                     },
                 ],
                 noise_factor: Some(0.07),
@@ -518,11 +573,13 @@ fn test_saas_startup() {
                         start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                         value: 60_000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 72_000.0,
+                        source: None,
                     },
                 ],
                 noise_factor: Some(0.03),
@@ -554,14 +611,17 @@ fn test_hospitality_business() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 200_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 8, 31).unwrap(),
                         value: 400_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 280_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: true,
@@ -575,10 +635,12 @@ fn test_hospitality_business() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 2_000_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 1_900_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -592,10 +654,12 @@ fn test_hospitality_business() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 80_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 100_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -609,10 +673,12 @@ fn test_hospitality_business() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 1_500_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 1_450_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -622,12 +688,11 @@ fn test_hospitality_business() {
                 name: "Owner's Equity".to_string(),
                 account_type: AccountType::Equity,
                 method: InterpolationMethod::Step,
-                snapshots: vec![
-                    BalanceSheetSnapshot {
-                        date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
-                        value: 600_000.0,
-                    },
-                ],
+                snapshots: vec![BalanceSheetSnapshot {
+                    date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
+                    value: 600_000.0,
+                    source: None,
+                }],
                 is_balancing_account: false,
                 noise_factor: None,
             },
@@ -637,78 +702,72 @@ fn test_hospitality_business() {
                 name: "Room Revenue".to_string(),
                 account_type: AccountType::Revenue,
                 seasonality_profile: SeasonalityProfileId::SummerHigh,
-                constraints: vec![
-                    PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 1_800_000.0,
-                    },
-                ],
+                constraints: vec![PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    value: 1_800_000.0,
+                    source: None,
+                }],
                 noise_factor: Some(0.06),
             },
             IncomeStatementAccount {
                 name: "Food & Beverage Revenue".to_string(),
                 account_type: AccountType::Revenue,
                 seasonality_profile: SeasonalityProfileId::SummerHigh,
-                constraints: vec![
-                    PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 600_000.0,
-                    },
-                ],
+                constraints: vec![PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    value: 600_000.0,
+                    source: None,
+                }],
                 noise_factor: Some(0.07),
             },
             IncomeStatementAccount {
                 name: "F&B Cost of Sales".to_string(),
                 account_type: AccountType::CostOfSales,
                 seasonality_profile: SeasonalityProfileId::SummerHigh,
-                constraints: vec![
-                    PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 210_000.0,
-                    },
-                ],
+                constraints: vec![PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    value: 210_000.0,
+                    source: None,
+                }],
                 noise_factor: Some(0.04),
             },
             IncomeStatementAccount {
                 name: "Staff Wages".to_string(),
                 account_type: AccountType::OperatingExpense,
                 seasonality_profile: SeasonalityProfileId::SummerHigh,
-                constraints: vec![
-                    PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 720_000.0,
-                    },
-                ],
+                constraints: vec![PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    value: 720_000.0,
+                    source: None,
+                }],
                 noise_factor: Some(0.03),
             },
             IncomeStatementAccount {
                 name: "Utilities".to_string(),
                 account_type: AccountType::OperatingExpense,
                 seasonality_profile: SeasonalityProfileId::SummerHigh,
-                constraints: vec![
-                    PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 120_000.0,
-                    },
-                ],
+                constraints: vec![PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    value: 120_000.0,
+                    source: None,
+                }],
                 noise_factor: Some(0.05),
             },
             IncomeStatementAccount {
                 name: "Property Lease".to_string(),
                 account_type: AccountType::OperatingExpense,
                 seasonality_profile: SeasonalityProfileId::Flat,
-                constraints: vec![
-                    PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 240_000.0,
-                    },
-                ],
+                constraints: vec![PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    value: 240_000.0,
+                    source: None,
+                }],
                 noise_factor: None,
             },
         ],
@@ -750,12 +809,11 @@ fn test_designated_balancing_account() {
                 name: "Cash at Bank".to_string(),
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
-                snapshots: vec![
-                    BalanceSheetSnapshot {
-                        date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
-                        value: 100_000.0,
-                    },
-                ],
+                snapshots: vec![BalanceSheetSnapshot {
+                    date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
+                    value: 100_000.0,
+                    source: None,
+                }],
                 is_balancing_account: true,
                 noise_factor: None,
             },
@@ -767,10 +825,12 @@ fn test_designated_balancing_account() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 50_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 75_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -784,10 +844,12 @@ fn test_designated_balancing_account() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 30_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 40_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -801,10 +863,12 @@ fn test_designated_balancing_account() {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 100_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 100_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: false,
@@ -850,9 +914,9 @@ fn test_designated_balancing_account() {
 }
 
 #[test]
-fn test_hierarchical_constraints() {
+fn test_retained_earnings_integrity_check() {
     let config = FinancialHistoryConfig {
-        organization_name: "Mixed Mode Corp".to_string(),
+        organization_name: "Integrity Check Co".to_string(),
         fiscal_year_end_month: 12,
         balance_sheet: vec![
             BalanceSheetAccount {
@@ -862,55 +926,144 @@ fn test_hierarchical_constraints() {
                 snapshots: vec![
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
-                        value: 100000.0,
+                        value: 100_000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 100000.0,
+                        date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
+                        value: 100_000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: true,
                 noise_factor: None,
             },
-        ],
-        income_statement: vec![
-            IncomeStatementAccount {
-                name: "Sales".to_string(),
-                account_type: AccountType::Revenue,
-                seasonality_profile: SeasonalityProfileId::Flat,
-                constraints: vec![
-                    PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
-                        value: 10_000.0,
+            BalanceSheetAccount {
+                name: "Retained Earnings".to_string(),
+                account_type: AccountType::Equity,
+                method: InterpolationMethod::Step,
+                snapshots: vec![
+                    BalanceSheetSnapshot {
+                        date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
+                        value: 500_000.0,
+                        source: None,
                     },
-                    PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 2, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
-                        value: 0.0,
-                    },
-                    PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 3, 31).unwrap(),
-                        value: 25_000.0,
+                    BalanceSheetSnapshot {
+                        date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
+                        value: 500_000.0,
+                        source: None,
                     },
                 ],
+                is_balancing_account: false,
                 noise_factor: None,
             },
         ],
+        income_statement: vec![IncomeStatementAccount {
+            name: "Revenue".to_string(),
+            account_type: AccountType::Revenue,
+            seasonality_profile: SeasonalityProfileId::Flat,
+            constraints: vec![PeriodConstraint {
+                start_date: NaiveDate::from_ymd_opt(2023, 2, 1).unwrap(),
+                end_date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
+                value: 100_000.0,
+                source: None,
+            }],
+            noise_factor: None,
+        }],
+    };
+
+    let mut dense = process_config(&config).unwrap();
+    let verification = enforce_accounting_equation(&config, &mut dense).unwrap();
+
+    assert!(
+        verification
+            .warnings
+            .iter()
+            .any(|w| w.contains("Retained earnings")),
+        "Expected retained earnings roll-forward warning"
+    );
+}
+
+#[test]
+fn test_hierarchical_constraints() {
+    let config = FinancialHistoryConfig {
+        organization_name: "Mixed Mode Corp".to_string(),
+        fiscal_year_end_month: 12,
+        balance_sheet: vec![BalanceSheetAccount {
+            name: "Cash".to_string(),
+            account_type: AccountType::Asset,
+            method: InterpolationMethod::Linear,
+            snapshots: vec![
+                BalanceSheetSnapshot {
+                    date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
+                    value: 100000.0,
+                    source: None,
+                },
+                BalanceSheetSnapshot {
+                    date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    value: 100000.0,
+                    source: None,
+                },
+            ],
+            is_balancing_account: true,
+            noise_factor: None,
+        }],
+        income_statement: vec![IncomeStatementAccount {
+            name: "Sales".to_string(),
+            account_type: AccountType::Revenue,
+            seasonality_profile: SeasonalityProfileId::Flat,
+            constraints: vec![
+                PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
+                    value: 10_000.0,
+                    source: None,
+                },
+                PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 2, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
+                    value: 0.0,
+                    source: None,
+                },
+                PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 3, 31).unwrap(),
+                    value: 25_000.0,
+                    source: None,
+                },
+            ],
+            noise_factor: None,
+        }],
     };
 
     let dense = process_financial_history(&config).unwrap();
     let sales = dense.get("Sales").unwrap();
 
-    let jan = sales.get(&NaiveDate::from_ymd_opt(2023, 1, 31).unwrap()).unwrap();
-    assert!((jan - 10_000.0).abs() < 0.01, "Jan should be $10k, got {}", jan);
+    let jan = sales
+        .get(&NaiveDate::from_ymd_opt(2023, 1, 31).unwrap())
+        .unwrap()
+        .value;
+    assert!(
+        (jan - 10_000.0).abs() < 0.01,
+        "Jan should be $10k, got {}",
+        jan
+    );
 
-    let feb = sales.get(&NaiveDate::from_ymd_opt(2023, 2, 28).unwrap()).unwrap();
-    assert_eq!(*feb, 0.0, "Feb should be exactly $0");
+    let feb = sales
+        .get(&NaiveDate::from_ymd_opt(2023, 2, 28).unwrap())
+        .unwrap()
+        .value;
+    assert_eq!(feb, 0.0, "Feb should be exactly $0");
 
-    let mar = sales.get(&NaiveDate::from_ymd_opt(2023, 3, 31).unwrap()).unwrap();
-    assert!((mar - 15_000.0).abs() < 0.01, "Mar should be $15k, got {}", mar);
+    let mar = sales
+        .get(&NaiveDate::from_ymd_opt(2023, 3, 31).unwrap())
+        .unwrap()
+        .value;
+    assert!(
+        (mar - 15_000.0).abs() < 0.01,
+        "Mar should be $15k, got {}",
+        mar
+    );
 
     println!("✓ Hierarchical constraints test passed");
 }
@@ -920,57 +1073,78 @@ fn test_quarterly_constraints() {
     let config = FinancialHistoryConfig {
         organization_name: "Quarterly Corp".to_string(),
         fiscal_year_end_month: 12,
-        balance_sheet: vec![
-            BalanceSheetAccount {
-                name: "Cash".to_string(),
-                account_type: AccountType::Asset,
-                method: InterpolationMethod::Linear,
-                snapshots: vec![
-                    BalanceSheetSnapshot {
-                        date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
-                        value: 100000.0,
-                    },
-                    BalanceSheetSnapshot {
-                        date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
-                        value: 100000.0,
-                    },
-                ],
-                is_balancing_account: true,
-                noise_factor: None,
-            },
-        ],
-        income_statement: vec![
-            IncomeStatementAccount {
-                name: "Sales A".to_string(),
-                account_type: AccountType::Revenue,
-                seasonality_profile: SeasonalityProfileId::Flat,
-                constraints: vec![
-                    PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 6, 30).unwrap(),
-                        value: 50_000.0,
-                    },
-                    PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 7, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 9, 30).unwrap(),
-                        value: 15_000.0,
-                    },
-                ],
-                noise_factor: None,
-            },
-        ],
+        balance_sheet: vec![BalanceSheetAccount {
+            name: "Cash".to_string(),
+            account_type: AccountType::Asset,
+            method: InterpolationMethod::Linear,
+            snapshots: vec![
+                BalanceSheetSnapshot {
+                    date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
+                    value: 100000.0,
+                    source: None,
+                },
+                BalanceSheetSnapshot {
+                    date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    value: 100000.0,
+                    source: None,
+                },
+            ],
+            is_balancing_account: true,
+            noise_factor: None,
+        }],
+        income_statement: vec![IncomeStatementAccount {
+            name: "Sales A".to_string(),
+            account_type: AccountType::Revenue,
+            seasonality_profile: SeasonalityProfileId::Flat,
+            constraints: vec![
+                PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 6, 30).unwrap(),
+                    value: 50_000.0,
+                    source: None,
+                },
+                PeriodConstraint {
+                    start_date: NaiveDate::from_ymd_opt(2023, 7, 1).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2023, 9, 30).unwrap(),
+                    value: 15_000.0,
+                    source: None,
+                },
+            ],
+            noise_factor: None,
+        }],
     };
 
     let dense = process_financial_history(&config).unwrap();
     let sales = dense.get("Sales A").unwrap();
 
-    let jul = sales.get(&NaiveDate::from_ymd_opt(2023, 7, 31).unwrap()).unwrap();
-    let aug = sales.get(&NaiveDate::from_ymd_opt(2023, 8, 31).unwrap()).unwrap();
-    let sep = sales.get(&NaiveDate::from_ymd_opt(2023, 9, 30).unwrap()).unwrap();
+    let jul = sales
+        .get(&NaiveDate::from_ymd_opt(2023, 7, 31).unwrap())
+        .unwrap()
+        .value;
+    let aug = sales
+        .get(&NaiveDate::from_ymd_opt(2023, 8, 31).unwrap())
+        .unwrap()
+        .value;
+    let sep = sales
+        .get(&NaiveDate::from_ymd_opt(2023, 9, 30).unwrap())
+        .unwrap()
+        .value;
 
-    assert!((jul - 5000.0).abs() < 0.1, "Jul should be ~$5k, got {}", jul);
-    assert!((aug - 5000.0).abs() < 0.1, "Aug should be ~$5k, got {}", aug);
-    assert!((sep - 5000.0).abs() < 0.1, "Sep should be ~$5k, got {}", sep);
+    assert!(
+        (jul - 5000.0).abs() < 0.1,
+        "Jul should be ~$5k, got {}",
+        jul
+    );
+    assert!(
+        (aug - 5000.0).abs() < 0.1,
+        "Aug should be ~$5k, got {}",
+        aug
+    );
+    assert!(
+        (sep - 5000.0).abs() < 0.1,
+        "Sep should be ~$5k, got {}",
+        sep
+    );
 
     println!("✓ Quarterly constraints test passed");
 }

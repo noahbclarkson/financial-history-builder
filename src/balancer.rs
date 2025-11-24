@@ -1,11 +1,16 @@
-use crate::engine::DenseSeries;
 use crate::error::{FinancialHistoryError, Result};
 use crate::schema::{AccountType, FinancialHistoryConfig};
+use crate::{DataOrigin, DenseSeries, MonthlyDataPoint};
 use chrono::NaiveDate;
 use std::collections::{BTreeMap, HashSet};
 
 pub struct AccountingBalancer<'a> {
     config: &'a FinancialHistoryConfig,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct VerificationResult {
+    pub warnings: Vec<String>,
 }
 
 impl<'a> AccountingBalancer<'a> {
@@ -16,14 +21,15 @@ impl<'a> AccountingBalancer<'a> {
     pub fn enforce_accounting_equation(
         &self,
         dense_data: &mut BTreeMap<String, DenseSeries>,
-    ) -> Result<()> {
+    ) -> Result<VerificationResult> {
         let plug_account_name = self.find_or_create_plug_account(dense_data)?;
         let plug_type = self.get_account_type(&plug_account_name);
 
         let all_dates = self.collect_all_dates(dense_data);
 
         for date in all_dates {
-            let (assets, liabilities, equity) = self.calculate_balances(dense_data, &plug_account_name, date);
+            let (assets, liabilities, equity) =
+                self.calculate_balances(dense_data, &plug_account_name, date);
 
             let required_plug = match plug_type {
                 AccountType::Asset => liabilities + equity - assets,
@@ -33,10 +39,19 @@ impl<'a> AccountingBalancer<'a> {
             dense_data
                 .entry(plug_account_name.clone())
                 .or_default()
-                .insert(date, required_plug);
+                .insert(
+                    date,
+                    MonthlyDataPoint {
+                        value: required_plug,
+                        origin: DataOrigin::BalancingPlug,
+                        source_doc: None,
+                    },
+                );
         }
 
-        Ok(())
+        let warnings = self.check_retained_earnings_rollforward(dense_data);
+
+        Ok(VerificationResult { warnings })
     }
 
     pub fn verify_accounting_equation(
@@ -135,7 +150,8 @@ impl<'a> AccountingBalancer<'a> {
                 continue;
             }
 
-            if let Some(&value) = series.get(&date) {
+            if let Some(point) = series.get(&date) {
+                let value = point.value;
                 if let Some(account) = self.config.balance_sheet.iter().find(|a| a.name == *name) {
                     match account.account_type {
                         AccountType::Asset => assets += value,
@@ -166,12 +182,83 @@ impl<'a> AccountingBalancer<'a> {
 
         AccountType::Equity
     }
+
+    fn calculate_net_income(
+        &self,
+        dense_data: &BTreeMap<String, DenseSeries>,
+        date: NaiveDate,
+    ) -> f64 {
+        let mut revenue = 0.0;
+        let mut other_income = 0.0;
+        let mut cost_of_sales = 0.0;
+        let mut operating_expense = 0.0;
+
+        for account in &self.config.income_statement {
+            if let Some(series) = dense_data.get(&account.name) {
+                if let Some(point) = series.get(&date) {
+                    match account.account_type {
+                        AccountType::Revenue => revenue += point.value,
+                        AccountType::OtherIncome => other_income += point.value,
+                        AccountType::CostOfSales => cost_of_sales += point.value,
+                        AccountType::OperatingExpense => operating_expense += point.value,
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        revenue + other_income - cost_of_sales - operating_expense
+    }
+
+    fn check_retained_earnings_rollforward(
+        &self,
+        dense_data: &BTreeMap<String, DenseSeries>,
+    ) -> Vec<String> {
+        let retained = self
+            .config
+            .balance_sheet
+            .iter()
+            .find(|acc| acc.name.to_lowercase().contains("retained earnings"));
+
+        let Some(account) = retained else {
+            return Vec::new();
+        };
+
+        let Some(series) = dense_data.get(&account.name) else {
+            return Vec::new();
+        };
+
+        let mut dates: Vec<NaiveDate> = series.keys().copied().collect();
+        dates.sort();
+
+        let mut warnings = Vec::new();
+        const RE_TOLERANCE: f64 = 1.0;
+
+        for window in dates.windows(2) {
+            let prev = window[0];
+            let current = window[1];
+
+            if let (Some(prev_point), Some(curr_point)) = (series.get(&prev), series.get(&current))
+            {
+                let change = curr_point.value - prev_point.value;
+                let net_income = self.calculate_net_income(dense_data, current);
+                if (change - net_income).abs() > RE_TOLERANCE {
+                    warnings.push(format!(
+                        "Retained earnings movement mismatch on {}: change {:.2} vs net income {:.2}",
+                        current, change, net_income
+                    ));
+                }
+            }
+        }
+
+        warnings
+    }
 }
 
 pub fn enforce_accounting_equation(
     config: &FinancialHistoryConfig,
     dense_data: &mut BTreeMap<String, DenseSeries>,
-) -> Result<()> {
+) -> Result<VerificationResult> {
     let balancer = AccountingBalancer::new(config);
     balancer.enforce_accounting_equation(dense_data)
 }
@@ -203,6 +290,7 @@ mod tests {
                     snapshots: vec![BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 10000.0,
+                        source: None,
                     }],
                     is_balancing_account: false,
                     noise_factor: None,
@@ -214,6 +302,7 @@ mod tests {
                     snapshots: vec![BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 5000.0,
+                        source: None,
                     }],
                     is_balancing_account: false,
                     noise_factor: None,
@@ -233,14 +322,29 @@ mod tests {
         let mut dense_data = BTreeMap::new();
 
         let mut cash_series = BTreeMap::new();
-        cash_series.insert(NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(), 10000.0);
+        cash_series.insert(
+            NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+            MonthlyDataPoint {
+                value: 10000.0,
+                origin: DataOrigin::Anchor,
+                source_doc: None,
+            },
+        );
         dense_data.insert("Cash".to_string(), cash_series);
 
         let mut loan_series = BTreeMap::new();
-        loan_series.insert(NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(), 5000.0);
+        loan_series.insert(
+            NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+            MonthlyDataPoint {
+                value: 5000.0,
+                origin: DataOrigin::Anchor,
+                source_doc: None,
+            },
+        );
         dense_data.insert("Loan".to_string(), loan_series);
 
-        enforce_accounting_equation(&config, &mut dense_data).unwrap();
+        let verification_result = enforce_accounting_equation(&config, &mut dense_data).unwrap();
+        assert!(verification_result.warnings.is_empty());
 
         let result = verify_accounting_equation(&config, &dense_data, 0.01);
         assert!(result.is_ok());
@@ -275,11 +379,25 @@ mod tests {
         let mut dense_data = BTreeMap::new();
 
         let mut cash_series = BTreeMap::new();
-        cash_series.insert(NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(), 10000.0);
+        cash_series.insert(
+            NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+            MonthlyDataPoint {
+                value: 10000.0,
+                origin: DataOrigin::Anchor,
+                source_doc: None,
+            },
+        );
         dense_data.insert("Cash".to_string(), cash_series);
 
         let mut loan_series = BTreeMap::new();
-        loan_series.insert(NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(), 3000.0);
+        loan_series.insert(
+            NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+            MonthlyDataPoint {
+                value: 3000.0,
+                origin: DataOrigin::Anchor,
+                source_doc: None,
+            },
+        );
         dense_data.insert("Loan".to_string(), loan_series);
 
         let result = verify_accounting_equation(&config, &dense_data, 0.01);

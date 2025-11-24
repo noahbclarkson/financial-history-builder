@@ -22,17 +22,13 @@ pub fn get_profile_weights(profile: &SeasonalityProfileId) -> Result<Vec<f64>> {
 
         SeasonalityProfileId::RetailPeak => {
             vec![
-                0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075,
-                0.175,
+                0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.075, 0.175,
             ]
         }
 
-        SeasonalityProfileId::SummerHigh => {
-            vec![
-                0.065, 0.065, 0.065, 0.100, 0.100, 0.100, 0.100, 0.100, 0.080, 0.080, 0.080,
-                0.065,
-            ]
-        }
+        SeasonalityProfileId::SummerHigh => normalize_weights(&[
+            0.05, 0.05, 0.05, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.07, 0.07, 0.07,
+        ]),
 
         SeasonalityProfileId::SaasGrowth => {
             let mut weights = Vec::new();
@@ -55,9 +51,10 @@ pub fn get_profile_weights(profile: &SeasonalityProfileId) -> Result<Vec<f64>> {
 
 fn validate_custom_weights(weights: &[f64]) -> Result<()> {
     if weights.len() != 12 {
-        return Err(FinancialHistoryError::InvalidSeasonalityWeights(
-            format!("Expected 12 weights, got {}", weights.len()),
-        ));
+        return Err(FinancialHistoryError::InvalidSeasonalityWeights(format!(
+            "Expected 12 weights, got {}",
+            weights.len()
+        )));
     }
 
     if weights.iter().any(|&w| w < 0.0) {
@@ -68,9 +65,10 @@ fn validate_custom_weights(weights: &[f64]) -> Result<()> {
 
     let sum: f64 = weights.iter().sum();
     if (sum - 1.0).abs() > 0.01 {
-        return Err(FinancialHistoryError::InvalidSeasonalityWeights(
-            format!("Weights must sum to 1.0 (got {})", sum),
-        ));
+        return Err(FinancialHistoryError::InvalidSeasonalityWeights(format!(
+            "Weights must sum to 1.0 (got {})",
+            sum
+        )));
     }
 
     Ok(())
@@ -84,10 +82,7 @@ fn normalize_weights(weights: &[f64]) -> Vec<f64> {
     weights.iter().map(|w| w / sum).collect()
 }
 
-pub fn rotate_weights_for_fiscal_year(
-    weights: &[f64],
-    fiscal_year_end_month: u32,
-) -> Vec<f64> {
+pub fn rotate_weights_for_fiscal_year(weights: &[f64], fiscal_year_end_month: u32) -> Vec<f64> {
     if fiscal_year_end_month == 12 {
         return weights.to_vec();
     }
@@ -171,7 +166,9 @@ mod tests {
 
     #[test]
     fn test_rotate_weights() {
-        let weights = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
+        let weights = vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ];
         let rotated = rotate_weights_for_fiscal_year(&weights, 6);
         assert_eq!(rotated[0], 7.0);
         assert_eq!(rotated[6], 1.0);
@@ -180,7 +177,9 @@ mod tests {
 
     #[test]
     fn test_rotate_weights_no_rotation() {
-        let weights = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
+        let weights = vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ];
         let rotated = rotate_weights_for_fiscal_year(&weights, 12);
         assert_eq!(rotated, weights);
     }

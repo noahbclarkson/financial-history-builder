@@ -2,14 +2,14 @@ use async_openai::{
     config::OpenAIConfig,
     types::{
         ChatCompletionRequestMessage, ChatCompletionRequestSystemMessage,
-        ChatCompletionRequestUserMessage, CreateChatCompletionRequestArgs,
-        ResponseFormat, ResponseFormatJsonSchema,
+        ChatCompletionRequestUserMessage, CreateChatCompletionRequestArgs, ResponseFormat,
+        ResponseFormatJsonSchema,
     },
     Client,
 };
 use dotenv::dotenv;
 use financial_history_builder::{
-    process_financial_history, verify_accounting_equation, FinancialHistoryConfig,
+    process_financial_history, verify_accounting_equation, DataOrigin, FinancialHistoryConfig,
 };
 use std::error::Error;
 use std::fs::File;
@@ -69,6 +69,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let system_prompt = r#"You are a Financial Data Extraction Engine.
 
 Extract financial data and output JSON matching the provided schema.
+
+TRUST LAYER - SOURCE TRACKING:
+- Populate `source` on snapshots/constraints with `{ document_name, original_text }`.
+- If extracting from a table, map the numeric value but leave `original_text` null to save tokens.
 
 THE NEW FINANCIAL MODEL:
 1. BALANCE SHEET (Point-in-time snapshots):
@@ -136,7 +140,10 @@ Generate valid JSON matching the FinancialHistoryConfig schema."#;
         })
         .build()?;
 
-    let response = client.chat().create(request).await
+    let response = client
+        .chat()
+        .create(request)
+        .await
         .map_err(|e| format!("API error: {}", e))?;
 
     println!("📥 Received response from Gemini.");
@@ -152,13 +159,16 @@ Generate valid JSON matching the FinancialHistoryConfig schema."#;
     std::fs::write("gemini_raw_response.txt", content)?;
 
     println!("🔄 Parsing structured JSON output...");
-    let config: FinancialHistoryConfig = serde_json::from_str(content)
-        .map_err(|e| -> Box<dyn Error> {
+    let config: FinancialHistoryConfig =
+        serde_json::from_str(content).map_err(|e| -> Box<dyn Error> {
             eprintln!("❌ JSON Parse Error: {}", e);
             format!("JSON parse error: {}", e).into()
         })?;
 
-    println!("✅ Successfully parsed into Rust structs: {}", config.organization_name);
+    println!(
+        "✅ Successfully parsed into Rust structs: {}",
+        config.organization_name
+    );
 
     println!("⚙️  Running Financial History Engine (Interpolation + Balancing)...");
     let dense_data = process_financial_history(&config)
@@ -167,6 +177,30 @@ Generate valid JSON matching the FinancialHistoryConfig schema."#;
     match verify_accounting_equation(&config, &dense_data, 1.0) {
         Ok(_) => println!("⚖️  Accounting Equation Balanced (Assets = Liab + Equity)"),
         Err(e) => eprintln!("⚠️  Balance Warning: {}", e),
+    }
+
+    if let Some((account_name, series)) = dense_data
+        .iter()
+        .find(|(name, _)| name.to_lowercase().contains("revenue"))
+    {
+        if let Some((date, point)) = series.iter().next() {
+            let origin_label = match point.origin {
+                DataOrigin::Anchor => "Anchor",
+                DataOrigin::Interpolated => "Interpolated",
+                DataOrigin::BalancingPlug => "Balancing Plug",
+            };
+            let source_doc = point
+                .source_doc
+                .as_deref()
+                .unwrap_or("Unknown source document");
+            println!(
+                "🔎 User hovers over {} {}: Shown as '{}' from '{}'",
+                date.format("%b %Y"),
+                account_name,
+                origin_label,
+                source_doc
+            );
+        }
     }
 
     let filename = "gemini_output.csv";
@@ -179,7 +213,8 @@ Generate valid JSON matching the FinancialHistoryConfig schema."#;
     }
     writeln!(file)?;
 
-    let mut dates: Vec<chrono::NaiveDate> = dense_data.values()
+    let mut dates: Vec<chrono::NaiveDate> = dense_data
+        .values()
         .flat_map(|s| s.keys())
         .copied()
         .collect();
@@ -189,7 +224,11 @@ Generate valid JSON matching the FinancialHistoryConfig schema."#;
     for date in dates {
         write!(file, "{}", date)?;
         for name in &account_names {
-            let val = dense_data.get(name).and_then(|s| s.get(&date)).unwrap_or(&0.0);
+            let val = dense_data
+                .get(name)
+                .and_then(|s| s.get(&date))
+                .map(|point| point.value)
+                .unwrap_or(0.0);
             write!(file, ",{:.2}", val)?;
         }
         writeln!(file)?;

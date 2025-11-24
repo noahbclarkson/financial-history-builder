@@ -2,13 +2,12 @@ use crate::error::Result;
 use crate::schema::*;
 use crate::seasonality::{get_profile_weights, rotate_weights_for_fiscal_year};
 use crate::utils::get_month_ends_in_period;
+use crate::{DataOrigin, DenseSeries, MonthlyDataPoint};
 use chrono::{Datelike, NaiveDate};
 use rand::thread_rng;
 use rand_distr::{Distribution, Normal};
 use splines::{Interpolation, Key, Spline};
 use std::collections::BTreeMap;
-
-pub type DenseSeries = BTreeMap<NaiveDate, f64>;
 
 pub struct Densifier {
     fiscal_year_end_month: u32,
@@ -18,6 +17,8 @@ struct MonthSlot {
     weight: f64,
     locked: bool,
     value: f64,
+    origin: DataOrigin,
+    source_doc: Option<String>,
 }
 
 impl Densifier {
@@ -44,12 +45,7 @@ impl Densifier {
         let keys: Vec<Key<f64, f64>> = snapshots
             .iter()
             .map(|s| {
-                let t = s
-                    .date
-                    .and_hms_opt(0, 0, 0)
-                    .unwrap()
-                    .and_utc()
-                    .timestamp() as f64;
+                let t = s.date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp() as f64;
                 Key::new(t, s.value, interpolation)
             })
             .collect();
@@ -65,26 +61,33 @@ impl Densifier {
         let noise_factor = account.noise_factor.unwrap_or(0.0);
 
         for date in dates {
-            let t = date
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-                .and_utc()
-                .timestamp() as f64;
+            let t = date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp() as f64;
 
             let exact_match = snapshots.iter().find(|s| s.date == date);
 
-            let value = if let Some(snap) = exact_match {
-                snap.value
+            let (value, origin, source_doc) = if let Some(snap) = exact_match {
+                (
+                    snap.value,
+                    DataOrigin::Anchor,
+                    snap.source.as_ref().map(|meta| meta.document_name.clone()),
+                )
             } else {
                 let mut val = spline.clamped_sample(t).unwrap_or(0.0);
                 if noise_factor > 0.0 {
                     let normal = Normal::new(0.0, noise_factor).unwrap();
                     val *= 1.0 + normal.sample(&mut rng);
                 }
-                val
+                (val, DataOrigin::Interpolated, None)
             };
 
-            series.insert(date, value);
+            series.insert(
+                date,
+                MonthlyDataPoint {
+                    value,
+                    origin,
+                    source_doc,
+                },
+            );
         }
 
         Ok(series)
@@ -104,7 +107,12 @@ impl Densifier {
             .map(|c| c.start_date)
             .min()
             .unwrap();
-        let global_end = account.constraints.iter().map(|c| c.end_date).max().unwrap();
+        let global_end = account
+            .constraints
+            .iter()
+            .map(|c| c.end_date)
+            .max()
+            .unwrap();
 
         let all_dates = get_month_ends_in_period(global_start, global_end);
 
@@ -119,6 +127,8 @@ impl Densifier {
                     weight: calendar_weights[month_idx],
                     locked: false,
                     value: 0.0,
+                    origin: DataOrigin::Interpolated,
+                    source_doc: None,
                 },
             );
         }
@@ -130,7 +140,14 @@ impl Densifier {
         let noise = account.noise_factor.unwrap_or(0.0);
 
         for constraint in constraints {
-            let constraint_dates = get_month_ends_in_period(constraint.start_date, constraint.end_date);
+            let constraint_dates =
+                get_month_ends_in_period(constraint.start_date, constraint.end_date);
+            let is_single_month = constraint.start_date.year() == constraint.end_date.year()
+                && constraint.start_date.month() == constraint.end_date.month();
+            let source_doc = constraint
+                .source
+                .as_ref()
+                .map(|meta| meta.document_name.clone());
 
             let valid_dates: Vec<NaiveDate> = constraint_dates
                 .into_iter()
@@ -198,11 +215,29 @@ impl Densifier {
                 if let Some(slot) = grid.get_mut(date) {
                     slot.value = final_val;
                     slot.locked = true;
+                    slot.origin = if is_single_month {
+                        DataOrigin::Anchor
+                    } else {
+                        DataOrigin::Interpolated
+                    };
+                    slot.source_doc = source_doc.clone();
                 }
             }
         }
 
-        let result: DenseSeries = grid.into_iter().map(|(k, v)| (k, v.value)).collect();
+        let result: DenseSeries = grid
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    MonthlyDataPoint {
+                        value: v.value,
+                        origin: v.origin,
+                        source_doc: v.source_doc,
+                    },
+                )
+            })
+            .collect();
         Ok(result)
     }
 
@@ -228,9 +263,7 @@ impl Densifier {
     }
 }
 
-pub fn process_config(
-    config: &FinancialHistoryConfig,
-) -> Result<BTreeMap<String, DenseSeries>> {
+pub fn process_config(config: &FinancialHistoryConfig) -> Result<BTreeMap<String, DenseSeries>> {
     let densifier = Densifier::new(config.fiscal_year_end_month);
     let mut data = BTreeMap::new();
 
@@ -262,16 +295,19 @@ mod tests {
                     start_date: NaiveDate::from_ymd_opt(2023, 2, 1).unwrap(),
                     end_date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
                     value: 5000.0,
+                    source: None,
                 },
                 PeriodConstraint {
                     start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                     end_date: NaiveDate::from_ymd_opt(2023, 3, 31).unwrap(),
                     value: 13000.0,
+                    source: None,
                 },
                 PeriodConstraint {
                     start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                     end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                     value: 50000.0,
+                    source: None,
                 },
             ],
             noise_factor: None,
@@ -280,11 +316,23 @@ mod tests {
         let densifier = Densifier::new(12);
         let series = densifier.densify_income_statement(&account).unwrap();
 
-        let feb_val = series.get(&NaiveDate::from_ymd_opt(2023, 2, 28).unwrap()).unwrap();
-        assert!((feb_val - 5000.0).abs() < 0.01, "Feb should be exactly 5000");
+        let feb_val = series
+            .get(&NaiveDate::from_ymd_opt(2023, 2, 28).unwrap())
+            .unwrap()
+            .value;
+        assert!(
+            (feb_val - 5000.0).abs() < 0.01,
+            "Feb should be exactly 5000"
+        );
 
-        let jan_val = series.get(&NaiveDate::from_ymd_opt(2023, 1, 31).unwrap()).unwrap();
-        let mar_val = series.get(&NaiveDate::from_ymd_opt(2023, 3, 31).unwrap()).unwrap();
+        let jan_val = series
+            .get(&NaiveDate::from_ymd_opt(2023, 1, 31).unwrap())
+            .unwrap()
+            .value;
+        let mar_val = series
+            .get(&NaiveDate::from_ymd_opt(2023, 3, 31).unwrap())
+            .unwrap()
+            .value;
         let q1_sum = jan_val + feb_val + mar_val;
         assert!(
             (q1_sum - 13000.0).abs() < 0.01,
@@ -292,7 +340,7 @@ mod tests {
             q1_sum
         );
 
-        let year_sum: f64 = series.values().sum();
+        let year_sum: f64 = series.values().map(|p| p.value).sum();
         assert!(
             (year_sum - 50000.0).abs() < 0.01,
             "Year should sum to 50000, got {}",
@@ -302,7 +350,7 @@ mod tests {
         let apr_dec_sum: f64 = series
             .iter()
             .filter(|(date, _)| date.month() >= 4)
-            .map(|(_, val)| val)
+            .map(|(_, val)| val.value)
             .sum();
         let expected_apr_dec = 50000.0 - 13000.0;
         assert!(
@@ -322,10 +370,12 @@ mod tests {
                 BalanceSheetSnapshot {
                     date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                     value: 100000.0,
+                    source: None,
                 },
                 BalanceSheetSnapshot {
                     date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                     value: 200000.0,
+                    source: None,
                 },
             ],
             is_balancing_account: false,
@@ -339,12 +389,14 @@ mod tests {
 
         let first = series
             .get(&NaiveDate::from_ymd_opt(2023, 1, 31).unwrap())
-            .unwrap();
+            .unwrap()
+            .value;
         assert!((first - 100000.0).abs() < 0.01);
 
         let last = series
             .get(&NaiveDate::from_ymd_opt(2023, 12, 31).unwrap())
-            .unwrap();
+            .unwrap()
+            .value;
         assert!((last - 200000.0).abs() < 0.01);
     }
 
@@ -361,10 +413,12 @@ mod tests {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                         value: 50000.0,
+                        source: None,
                     },
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 75000.0,
+                        source: None,
                     },
                 ],
                 is_balancing_account: true,
@@ -378,6 +432,7 @@ mod tests {
                     start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                     end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                     value: 120000.0,
+                    source: None,
                 }],
                 noise_factor: None,
             }],
@@ -388,7 +443,12 @@ mod tests {
         assert!(result.contains_key("Cash"));
         assert!(result.contains_key("Revenue"));
 
-        let revenue_sum: f64 = result.get("Revenue").unwrap().values().sum();
+        let revenue_sum: f64 = result
+            .get("Revenue")
+            .unwrap()
+            .values()
+            .map(|p| p.value)
+            .sum();
         assert!((revenue_sum - 120000.0).abs() < 0.01);
     }
 }

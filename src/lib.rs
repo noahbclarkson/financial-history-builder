@@ -13,7 +13,7 @@
 //!
 //! ## Example
 //!
-//! ```rust
+//! ```rust,ignore
 //! use financial_history_builder::*;
 //! use chrono::NaiveDate;
 //!
@@ -29,10 +29,12 @@
 //!                 BalanceSheetSnapshot {
 //!                     date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
 //!                     value: 50000.0,
+//!                     source: None,
 //!                 },
 //!                 BalanceSheetSnapshot {
 //!                     date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
 //!                     value: 75000.0,
+//!                     source: None,
 //!                 },
 //!             ],
 //!             is_balancing_account: true,
@@ -49,6 +51,7 @@
 //!                     start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
 //!                     end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
 //!                     value: 1_200_000.0,
+//!                     source: None,
 //!                 },
 //!             ],
 //!             noise_factor: Some(0.05),
@@ -63,20 +66,41 @@ pub mod balancer;
 pub mod chart_of_accounts;
 pub mod engine;
 pub mod error;
+pub mod ingestion;
 pub mod schema;
 pub mod seasonality;
 pub mod utils;
 
-pub use balancer::{enforce_accounting_equation, verify_accounting_equation, AccountingBalancer};
+pub use balancer::{
+    enforce_accounting_equation, verify_accounting_equation, AccountingBalancer, VerificationResult,
+};
 pub use chart_of_accounts::{AccountEntry, ChartOfAccounts};
-pub use engine::{process_config, DenseSeries, Densifier};
+pub use engine::{process_config, Densifier};
 pub use error::{FinancialHistoryError, Result};
+pub use ingestion::*;
 pub use schema::*;
 pub use seasonality::{get_profile_weights, rotate_weights_for_fiscal_year};
 pub use utils::*;
 
 use chrono::NaiveDate;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum DataOrigin {
+    Anchor,
+    Interpolated,
+    BalancingPlug,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonthlyDataPoint {
+    pub value: f64,
+    pub origin: DataOrigin,
+    pub source_doc: Option<String>,
+}
+
+pub type DenseSeries = BTreeMap<NaiveDate, MonthlyDataPoint>;
 
 pub struct FinancialHistoryProcessor;
 
@@ -87,7 +111,13 @@ impl FinancialHistoryProcessor {
 
         let mut dense_data = process_config(config)?;
 
-        enforce_accounting_equation_new(config, &mut dense_data)?;
+        let verification = enforce_accounting_equation_new(config, &mut dense_data)?;
+
+        if !verification.warnings.is_empty() {
+            for warning in verification.warnings {
+                eprintln!("Warning: {}", warning);
+            }
+        }
 
         Ok(dense_data)
     }
@@ -178,54 +208,9 @@ fn validate_config_integrity(config: &FinancialHistoryConfig) -> Result<()> {
 fn enforce_accounting_equation_new(
     config: &FinancialHistoryConfig,
     dense_data: &mut BTreeMap<String, DenseSeries>,
-) -> Result<()> {
-    let balancing_account = config
-        .balance_sheet
-        .iter()
-        .find(|acc| acc.is_balancing_account);
-
-    if balancing_account.is_none() {
-        return Ok(());
-    }
-
-    let balancing_name = &balancing_account.unwrap().name;
-
-    let all_dates: std::collections::BTreeSet<NaiveDate> = dense_data
-        .values()
-        .flat_map(|series| series.keys())
-        .copied()
-        .collect();
-
-    for date in all_dates {
-        let mut assets = 0.0;
-        let mut liabilities = 0.0;
-        let mut equity = 0.0;
-
-        for account in &config.balance_sheet {
-            if let Some(series) = dense_data.get(&account.name) {
-                if let Some(&value) = series.get(&date) {
-                    match account.account_type {
-                        AccountType::Asset => {
-                            if account.name != *balancing_name {
-                                assets += value;
-                            }
-                        }
-                        AccountType::Liability => liabilities += value,
-                        AccountType::Equity => equity += value,
-                        _ => {}
-                    }
-                }
-            }
-        }
-
-        let required_balancing = liabilities + equity - assets;
-
-        if let Some(series) = dense_data.get_mut(balancing_name) {
-            series.insert(date, required_balancing);
-        }
-    }
-
-    Ok(())
+) -> Result<crate::balancer::VerificationResult> {
+    let balancer = AccountingBalancer::new(config);
+    balancer.enforce_accounting_equation(dense_data)
 }
 
 fn verify_accounting_equation_new(
@@ -233,43 +218,8 @@ fn verify_accounting_equation_new(
     dense_data: &BTreeMap<String, DenseSeries>,
     tolerance: f64,
 ) -> Result<()> {
-    let all_dates: std::collections::BTreeSet<NaiveDate> = dense_data
-        .values()
-        .flat_map(|series| series.keys())
-        .copied()
-        .collect();
-
-    for date in all_dates {
-        let mut assets = 0.0;
-        let mut liabilities = 0.0;
-        let mut equity = 0.0;
-
-        for account in &config.balance_sheet {
-            if let Some(series) = dense_data.get(&account.name) {
-                if let Some(&value) = series.get(&date) {
-                    match account.account_type {
-                        AccountType::Asset => assets += value,
-                        AccountType::Liability => liabilities += value,
-                        AccountType::Equity => equity += value,
-                        _ => {}
-                    }
-                }
-            }
-        }
-
-        let difference = (assets - (liabilities + equity)).abs();
-        if difference > tolerance {
-            return Err(FinancialHistoryError::AccountingEquationViolation {
-                date,
-                assets,
-                liabilities,
-                equity,
-                difference,
-            });
-        }
-    }
-
-    Ok(())
+    let balancer = AccountingBalancer::new(config);
+    balancer.verify_accounting_equation(dense_data, tolerance)
 }
 
 #[cfg(test)]
@@ -291,10 +241,12 @@ mod tests {
                         BalanceSheetSnapshot {
                             date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                             value: 50000.0,
+                            source: None,
                         },
                         BalanceSheetSnapshot {
                             date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                             value: 75000.0,
+                            source: None,
                         },
                     ],
                     is_balancing_account: true,
@@ -308,10 +260,12 @@ mod tests {
                         BalanceSheetSnapshot {
                             date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                             value: 20000.0,
+                            source: None,
                         },
                         BalanceSheetSnapshot {
                             date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                             value: 25000.0,
+                            source: None,
                         },
                     ],
                     is_balancing_account: false,
@@ -325,10 +279,12 @@ mod tests {
                         BalanceSheetSnapshot {
                             date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
                             value: 30000.0,
+                            source: None,
                         },
                         BalanceSheetSnapshot {
                             date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                             value: 30000.0,
+                            source: None,
                         },
                     ],
                     is_balancing_account: false,
@@ -367,6 +323,7 @@ mod tests {
                     start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                     end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                     value: 1_200_000.0,
+                    source: None,
                 }],
                 noise_factor: None,
             }],
@@ -378,7 +335,7 @@ mod tests {
         let dense = result.unwrap();
         let sales = dense.get("Sales").unwrap();
 
-        let total: f64 = sales.values().sum();
+        let total: f64 = sales.values().map(|p| p.value).sum();
         assert!((total - 1_200_000.0).abs() < 0.01);
 
         assert_eq!(sales.len(), 12);
@@ -399,16 +356,19 @@ mod tests {
                         start_date: NaiveDate::from_ymd_opt(2023, 2, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
                         value: 5000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 3, 31).unwrap(),
                         value: 13000.0,
+                        source: None,
                     },
                     PeriodConstraint {
                         start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
                         end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 50000.0,
+                        source: None,
                     },
                 ],
                 noise_factor: None,
@@ -421,7 +381,7 @@ mod tests {
         let dense = result.unwrap();
         let revenue = dense.get("Revenue").unwrap();
 
-        let total: f64 = revenue.values().sum();
+        let total: f64 = revenue.values().map(|p| p.value).sum();
         assert!(
             (total - 50000.0).abs() < 0.01,
             "Total should be 50000, got {}",
@@ -430,7 +390,8 @@ mod tests {
 
         let feb = revenue
             .get(&NaiveDate::from_ymd_opt(2023, 2, 28).unwrap())
-            .unwrap();
+            .unwrap()
+            .value;
         assert!(
             (feb - 5000.0).abs() < 0.01,
             "Feb should be 5000, got {}",

@@ -1,5 +1,5 @@
-use chrono::{Datelike, Days, NaiveDate};
 use crate::error::{FinancialHistoryError, Result};
+use chrono::{Datelike, Days, NaiveDate};
 
 pub fn next_month_end(date: NaiveDate) -> NaiveDate {
     let year = if date.month() == 12 {
