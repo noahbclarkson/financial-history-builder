@@ -2,7 +2,7 @@ use crate::error::Result;
 use crate::schema::*;
 use crate::seasonality::{get_profile_weights, rotate_weights_for_fiscal_year};
 use crate::utils::get_month_ends_in_period;
-use crate::{DataOrigin, DenseSeries, MonthlyDataPoint};
+use crate::{DataOrigin, DenseSeries, DerivationDetails, MonthlyDataPoint};
 use chrono::{Datelike, NaiveDate};
 use rand::thread_rng;
 use rand_distr::{Distribution, Normal};
@@ -13,12 +13,15 @@ pub struct Densifier {
     fiscal_year_end_month: u32,
 }
 
+// Internal struct to track state during solving
 struct MonthSlot {
     weight: f64,
     locked: bool,
     value: f64,
     origin: DataOrigin,
-    source_doc: Option<String>,
+    source: Option<SourceMetadata>,
+    derivation_logic: String,
+    original_period_info: Option<(f64, NaiveDate, NaiveDate)>,
 }
 
 impl Densifier {
@@ -65,11 +68,17 @@ impl Densifier {
 
             let exact_match = snapshots.iter().find(|s| s.date == date);
 
-            let (value, origin, source_doc) = if let Some(snap) = exact_match {
+            let (value, origin, source, derivation) = if let Some(snap) = exact_match {
                 (
                     snap.value,
                     DataOrigin::Anchor,
-                    snap.source.as_ref().map(|meta| meta.document_name.clone()),
+                    snap.source.clone(),
+                    DerivationDetails {
+                        original_period_value: None,
+                        period_start: None,
+                        period_end: None,
+                        logic: "Exact snapshot match from document".to_string(),
+                    },
                 )
             } else {
                 let mut val = spline.clamped_sample(t).unwrap_or(0.0);
@@ -77,7 +86,17 @@ impl Densifier {
                     let normal = Normal::new(0.0, noise_factor).unwrap();
                     val *= 1.0 + normal.sample(&mut rng);
                 }
-                (val, DataOrigin::Interpolated, None)
+                (
+                    val,
+                    DataOrigin::Interpolated,
+                    None,
+                    DerivationDetails {
+                        original_period_value: None,
+                        period_start: None,
+                        period_end: None,
+                        logic: format!("Interpolated using {:?} method", account.method),
+                    },
+                )
             };
 
             series.insert(
@@ -85,7 +104,8 @@ impl Densifier {
                 MonthlyDataPoint {
                     value,
                     origin,
-                    source_doc,
+                    source,
+                    derivation,
                 },
             );
         }
@@ -128,7 +148,9 @@ impl Densifier {
                     locked: false,
                     value: 0.0,
                     origin: DataOrigin::Interpolated,
-                    source_doc: None,
+                    source: None,
+                    derivation_logic: "Implied zero (no coverage)".to_string(),
+                    original_period_info: None,
                 },
             );
         }
@@ -142,12 +164,10 @@ impl Densifier {
         for constraint in constraints {
             let constraint_dates =
                 get_month_ends_in_period(constraint.start_date, constraint.end_date);
+
+            // Identify single-month constraints explicitly
             let is_single_month = constraint.start_date.year() == constraint.end_date.year()
                 && constraint.start_date.month() == constraint.end_date.month();
-            let source_doc = constraint
-                .source
-                .as_ref()
-                .map(|meta| meta.document_name.clone());
 
             let valid_dates: Vec<NaiveDate> = constraint_dates
                 .into_iter()
@@ -158,14 +178,17 @@ impl Densifier {
                 continue;
             }
 
+            // 1. Calculate what has already been filled by smaller constraints
             let locked_sum: f64 = valid_dates
                 .iter()
                 .filter(|d| grid.get(d).unwrap().locked)
                 .map(|d| grid.get(d).unwrap().value)
                 .sum();
 
+            // 2. Determine what's left for this period
             let remaining_value = constraint.value - locked_sum;
 
+            // 3. Identify months that still need values
             let unlocked_dates: Vec<NaiveDate> = valid_dates
                 .into_iter()
                 .filter(|d| !grid.get(d).unwrap().locked)
@@ -175,6 +198,7 @@ impl Densifier {
                 continue;
             }
 
+            // 4. Distribute based on seasonality weights
             let total_weight: f64 = unlocked_dates
                 .iter()
                 .map(|d| grid.get(d).unwrap().weight)
@@ -193,6 +217,7 @@ impl Densifier {
 
                 let base_alloc = remaining_value * relative_weight;
 
+                // Apply noise
                 let val = if noise > 0.0 {
                     let normal = Normal::new(0.0, noise).unwrap();
                     base_alloc * (1.0 + normal.sample(&mut rng))
@@ -204,23 +229,44 @@ impl Densifier {
                 raw_alloc_sum += val;
             }
 
+            // Re-normalize to ensure sum matches constraint exactly
             let correction = if raw_alloc_sum != 0.0 {
                 remaining_value / raw_alloc_sum
             } else {
                 0.0
             };
 
+            // 5. Update the Grid with Rich Metadata
             for (i, date) in unlocked_dates.iter().enumerate() {
                 let final_val = allocations[i] * correction;
+
                 if let Some(slot) = grid.get_mut(date) {
                     slot.value = final_val;
                     slot.locked = true;
-                    slot.origin = if is_single_month {
-                        DataOrigin::Anchor
+                    slot.source = constraint.source.clone();
+
+                    if is_single_month {
+                        slot.origin = DataOrigin::Anchor;
+                        slot.derivation_logic = "Direct monthly match".to_string();
+                        slot.original_period_info = None; // It's not derived, it IS the value
                     } else {
-                        DataOrigin::Interpolated
-                    };
-                    slot.source_doc = source_doc.clone();
+                        slot.origin = DataOrigin::Allocated;
+                        let period_type = if (constraint.end_date.ordinal() - constraint.start_date.ordinal()) > 360 {
+                            "Annual"
+                        } else {
+                            "Period"
+                        };
+                        slot.derivation_logic = format!(
+                            "Allocated portion of {} total (Seasonality: {:?})",
+                            period_type,
+                            account.seasonality_profile
+                        );
+                        slot.original_period_info = Some((
+                            constraint.value,
+                            constraint.start_date,
+                            constraint.end_date,
+                        ));
+                    }
                 }
             }
         }
@@ -233,7 +279,13 @@ impl Densifier {
                     MonthlyDataPoint {
                         value: v.value,
                         origin: v.origin,
-                        source_doc: v.source_doc,
+                        source: v.source,
+                        derivation: DerivationDetails {
+                            original_period_value: v.original_period_info.map(|x| x.0),
+                            period_start: v.original_period_info.map(|x| x.1),
+                            period_end: v.original_period_info.map(|x| x.2),
+                            logic: v.derivation_logic,
+                        },
                     },
                 )
             })

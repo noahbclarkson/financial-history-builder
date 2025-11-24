@@ -91,16 +91,37 @@ use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DataOrigin {
+    /// Exact match from a source document (e.g., "Cash on Dec 31")
     Anchor,
+    /// Mathematically derived from surrounding points (Balance Sheet)
     Interpolated,
+    /// Distributed from a larger time period (Income Statement)
+    /// e.g., A monthly value derived from an Annual Total
+    Allocated,
+    /// Generated to force Assets = Liabilities + Equity
     BalancingPlug,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DerivationDetails {
+    /// If allocated from a period (e.g. Annual), what was the total?
+    pub original_period_value: Option<f64>,
+    /// Start of the constraint period this was derived from
+    pub period_start: Option<NaiveDate>,
+    /// End of the constraint period
+    pub period_end: Option<NaiveDate>,
+    /// Human readable explanation (e.g. "Allocated from Annual Total")
+    pub logic: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonthlyDataPoint {
     pub value: f64,
     pub origin: DataOrigin,
-    pub source_doc: Option<String>,
+    /// The specific document and text snippet this came from (if applicable)
+    pub source: Option<SourceMetadata>,
+    /// How we calculated this specific number
+    pub derivation: DerivationDetails,
 }
 
 pub type DenseSeries = BTreeMap<NaiveDate, MonthlyDataPoint>;

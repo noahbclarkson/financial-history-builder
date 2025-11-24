@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SourceMetadata {
-    #[schemars(description = "The name of the file (PDF/Excel) this data came from.")]
+    #[schemars(description = "The EXACT filename from the Document Manifest. Do not invent or modify filenames.")]
     pub document_name: String,
 
     #[schemars(
-        description = "The specific text snippet containing this value. NOTE: For values extracted from large tables, leave this field blank to reduce token usage."
+        description = "Optional context about where this value was found. ONLY required if: (1) the source row/line label differs from the account name, OR (2) the value was extracted from narrative text rather than a labeled table row. If the account name exactly matches the row label in a financial table, you may omit this field."
     )]
     pub original_text: Option<String>,
 }

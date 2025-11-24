@@ -155,7 +155,7 @@ Extract MRR, churn, and ARR if mentioned.
 To use a different Gemini model, change the model parameter:
 
 ```rust
-.model("gemini-2.0-flash")     // Faster, cheaper
+.model("gemini-2.5-flash")     // Faster, cheaper
 .model("gemini-2.5-pro")       // More capable (default)
 ```
 

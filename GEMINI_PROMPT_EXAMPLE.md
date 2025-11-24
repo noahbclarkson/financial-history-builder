@@ -108,6 +108,107 @@ The system enforces Assets = Liabilities + Equity.
 - **Alternative**: Use "Retained Earnings" for complex cash flows
 - All other accounts should have `is_balancing_account: false` or omit it (defaults to false)
 
+## 🛡️ THE TRUST LAYER (Mandatory)
+
+**Every single extracted value MUST have a source.** The `source` field is not optional. It is the proof of your work.
+
+### Why This Matters
+
+Without source metadata, financial data becomes "black box" numbers that cannot be audited, verified, or trusted. Accountants, auditors, and financial analysts need to trace every single number back to its origin.
+
+### Source Field Requirements
+
+For **every** `BalanceSheetSnapshot` and **every** `PeriodConstraint`, you MUST populate the `source` field with:
+
+1. **`document_name`**: The EXACT filename from the Document Manifest (provided at the start of the prompt). Do not invent, modify, or guess filenames.
+
+2. **`original_text`** (SMART OPTIONAL):
+   - **When to INCLUDE `original_text`**:
+     - The source row/line label is **different** from the account name you're extracting (e.g., extracting "Professional Fees" but the row says "Legal & Consulting")
+     - The value came from **narrative text** rather than a labeled table row (e.g., "Revenue for 2023 was $3.5M" in a paragraph)
+     - The value was **inferred or calculated** (e.g., "Inferred from 2022 ending balance to serve as 2022 opening balance")
+
+   - **When to OMIT `original_text`** (leave as `null` or omit the field):
+     - The account name **exactly matches** the row label in a financial table
+     - Example: Extracting "Entertainment (Non Deductible)" from a row labeled "Entertainment (Non Deductible)" in the Income Statement
+     - This reduces token usage and improves efficiency without losing traceability
+
+### Special Cases
+
+**Inferred or Calculated Values**: If you must infer a value to make the math work (e.g., calculating an opening balance from a closing balance, or deriving a missing month from quarterly totals), you MUST include `original_text` explaining the inference:
+
+```json
+{
+  "source": {
+    "document_name": "2023_Financials.pdf",
+    "original_text": "Inferred: Used Dec 31, 2022 closing balance ($142k from page 4) as Jan 31, 2022 opening balance to establish starting position"
+  }
+}
+```
+
+**Matching Row Labels** (Most Common - Original Text Optional): When extracting from a financial table where the row label exactly matches the account name, you can omit `original_text`:
+
+```json
+{
+  "name": "Entertainment (Non Deductible)",
+  "constraints": [{
+    "start_date": "2025-01-01",
+    "end_date": "2025-12-31",
+    "value": 15000.0,
+    "source": {
+      "document_name": "FY2025_Draft.pdf"
+    }
+  }]
+}
+```
+
+**Different Row Labels**: If the source label differs from your account name, include `original_text`:
+
+```json
+{
+  "name": "Professional Fees",
+  "constraints": [{
+    "start_date": "2025-01-01",
+    "end_date": "2025-12-31",
+    "value": 25000.0,
+    "source": {
+      "document_name": "FY2025_Draft.pdf",
+      "original_text": "Extracted from row labeled 'Legal & Consulting Services'"
+    }
+  }]
+}
+```
+
+### Math Validation with Context
+
+The system validates two layers:
+
+1. **Mathematical Integrity**: Assets = Liabilities + Equity, period constraints sum correctly
+2. **Source Integrity**: Every number has traceable provenance
+
+If source fields are missing, the extraction will **FAIL VALIDATION** even if the math is perfect. This is intentional. Trust requires both correctness AND traceability.
+
+### Date Logic and Reasoning
+
+When extracting dates, apply these reasoning rules:
+
+**Balance Sheet Dates:**
+- "As of January 2023" → `2023-01-31` (last day of month)
+- "As of Sept 30, 2023" → `2023-09-30` (quarter end)
+- "Year ended December 31" → `2023-12-31`
+- **Opening balances**: If the earliest balance is "Dec 31, 2022: $142k", create an opening snapshot at "Jan 31, 2022: $142k" (or "Dec 31, 2021: $142k" for same value)
+
+**Income Statement Periods:**
+- "January 2023 revenue" → `start_date: "2023-01-01"`, `end_date: "2023-01-31"`
+- "Q1 2023" → `start_date: "2023-01-01"`, `end_date: "2023-03-31"`
+- "Fiscal year 2023" (calendar year) → `start_date: "2023-01-01"`, `end_date: "2023-12-31"`
+- "Fiscal year 2023" (July-June) → `start_date: "2022-07-01"`, `end_date: "2023-06-30"`
+
+**Edge Cases:**
+- If a month shows $0 revenue in the document → extract a constraint for that specific month with `value: 0.0` (prevents system from spreading annual revenue into that month)
+- If seeing both monthly AND quarterly totals → extract BOTH as separate constraints (the system solves them hierarchically)
+- Never subtract or calculate yourself → extract raw values and let the constraint solver handle the math
+
 ## JSON Schema
 
 Below is the **live schema** generated from the Rust code. The schema includes all field descriptions and constraints:
@@ -206,9 +307,30 @@ Total Liabilities & Equity      $1,285,000  $  997,000
       "account_type": "Asset",
       "method": "Linear",
       "snapshots": [
-        { "date": "2022-01-31", "value": 142000.0 },
-        { "date": "2022-12-31", "value": 142000.0 },
-        { "date": "2023-12-31", "value": 185000.0 }
+        {
+          "date": "2022-01-31",
+          "value": 142000.0,
+          "source": {
+            "document_name": "ACME_Financials_2023.pdf",
+            "original_text": "Inferred: Used Dec 31, 2022 balance as opening balance for FY 2022"
+          }
+        },
+        {
+          "date": "2022-12-31",
+          "value": 142000.0,
+          "source": {
+            "document_name": "ACME_Financials_2023.pdf",
+            "original_text": "Balance Sheet, Cash at Bank row, 2022 column"
+          }
+        },
+        {
+          "date": "2023-12-31",
+          "value": 185000.0,
+          "source": {
+            "document_name": "ACME_Financials_2023.pdf",
+            "original_text": "Balance Sheet, Cash at Bank row, 2023 column"
+          }
+        }
       ],
       "is_balancing_account": true,
       "noise_factor": 0.03
@@ -286,8 +408,24 @@ Total Liabilities & Equity      $1,285,000  $  997,000
       "account_type": "Revenue",
       "seasonality_profile": "RetailPeak",
       "constraints": [
-        { "start_date": "2022-01-01", "end_date": "2022-12-31", "value": 2800000.0 },
-        { "start_date": "2023-01-01", "end_date": "2023-12-31", "value": 3500000.0 }
+        {
+          "start_date": "2022-01-01",
+          "end_date": "2022-12-31",
+          "value": 2800000.0,
+          "source": {
+            "document_name": "ACME_Financials_2023.pdf",
+            "original_text": "Income Statement, Sales Revenue row, 2022 column"
+          }
+        },
+        {
+          "start_date": "2023-01-01",
+          "end_date": "2023-12-31",
+          "value": 3500000.0,
+          "source": {
+            "document_name": "ACME_Financials_2023.pdf",
+            "original_text": "Income Statement, Sales Revenue row, 2023 column"
+          }
+        }
       ],
       "noise_factor": 0.05
     },
@@ -362,6 +500,10 @@ Total Liabilities & Equity      $1,285,000  $  997,000
 
 Before outputting JSON, verify:
 
+- [ ] **EVERY snapshot has a populated `source` field** with `document_name` (from Document Manifest)
+- [ ] **EVERY constraint has a populated `source` field** with `document_name` (from Document Manifest)
+- [ ] **`original_text` is included** when: row label differs from account name, value from narrative text, or value was inferred
+- [ ] **`original_text` can be omitted** when: account name exactly matches the table row label
 - [ ] All monetary values are absolute values (no parentheses for negatives)
 - [ ] All dates are in `YYYY-MM-DD` format
 - [ ] `fiscal_year_end_month` is between 1 and 12

@@ -77,7 +77,8 @@ fn main() {
     {
         println!(
             " - First revenue month origin: {:?}, source: {:?}",
-            point.origin, point.source_doc
+            point.origin,
+            point.source.as_ref().map(|s| &s.document_name)
         );
     }
 }

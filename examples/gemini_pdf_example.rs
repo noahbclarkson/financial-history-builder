@@ -1,5 +1,5 @@
 use dotenv::dotenv;
-use financial_history_builder::llm::{FinancialExtractor, GeminiClient};
+use financial_history_builder::llm::{ExtractionEvent, FinancialExtractor, GeminiClient};
 use financial_history_builder::{
     process_financial_history, verify_accounting_equation, AccountType, DenseSeries,
     FinancialHistoryConfig,
@@ -9,13 +9,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use tokio::fs;
+use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv().ok();
     let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
 
-    println!("🚀 Starting Enhanced Gemini PDF Extraction Workflow with Self-Correction...\n");
+    println!("🚀 Starting Observable Agentic Financial Extraction Workflow...\n");
 
     let doc_dir = Path::new("examples").join("documents");
     if !doc_dir.exists() {
@@ -64,12 +65,52 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     println!();
 
-    println!("🤖 Extracting financial data with self-correcting validation loop...");
-    println!("   (This will automatically retry if validation errors are detected)\n");
+    // Create a channel for observability
+    let (tx, mut rx) = mpsc::channel(32);
 
-    let config = extractor.extract(&documents).await?;
+    // Spawn the extraction in a separate task
+    let extraction_handle = tokio::spawn(async move { extractor.extract(&documents, Some(tx)).await });
 
-    println!("\n✅ Extraction successful!");
+    // Poll the channel and print real-time updates
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                ExtractionEvent::Starting => {
+                    println!("🔄 Starting extraction workflow...");
+                }
+                ExtractionEvent::Uploading { filename } => {
+                    println!("📤 Uploading: {}", filename);
+                }
+                ExtractionEvent::DraftingResponse => {
+                    println!("🤖 AI is reading documents and drafting initial JSON...");
+                }
+                ExtractionEvent::ProcessingResponse => {
+                    println!("⚙️  Processing and parsing response...");
+                }
+                ExtractionEvent::Validating { attempt } => {
+                    println!("🔍 Validating math and sources (Attempt {})...", attempt);
+                }
+                ExtractionEvent::CorrectionNeeded { reason } => {
+                    println!("⚠️  Issue detected: {}", reason);
+                    println!("   Requesting AI to generate a patch...");
+                }
+                ExtractionEvent::Patching { attempt } => {
+                    println!("🩹 Applying JSON Patch {}...", attempt);
+                }
+                ExtractionEvent::Success => {
+                    println!("✅ Extraction and validation successful!");
+                }
+                ExtractionEvent::Failed { reason } => {
+                    println!("❌ Extraction failed: {}", reason);
+                }
+            }
+        }
+    });
+
+    // Await the extraction result
+    let config = extraction_handle.await??;
+
+    println!("\n✅ Final Configuration:");
     println!("   Organization: {}", config.organization_name);
     println!("   Fiscal Year End: Month {}", config.fiscal_year_end_month);
     println!("   Balance Sheet Accounts: {}", config.balance_sheet.len());
@@ -92,6 +133,41 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("\n📊 Balance Sheet (dense, dates on x-axis):\n{}", bs_table);
     }
 
+    // Print detailed audit trail for the first Revenue or income account
+    if let Some((name, series)) = dense_data
+        .iter()
+        .find(|(k, _)| config.income_statement.iter().any(|a| &a.name == *k))
+    {
+        println!("\n🔍 DETAILED AUDIT TRAIL for '{}':", name);
+        println!("   (Showing first 6 months for brevity)\n");
+        for (i, (date, point)) in series.iter().enumerate() {
+            if i >= 6 {
+                break;
+            }
+            println!("  📅 {}: ${:.2}", date, point.value);
+            println!("     Origin: {:?}", point.origin);
+            if let Some(src) = &point.source {
+                println!("     Source Doc: {}", src.document_name);
+                if let Some(txt) = &src.original_text {
+                    println!("     Context: \"{}\"", txt);
+                }
+            }
+            if let Some(total) = point.derivation.original_period_value {
+                println!(
+                    "     Calculation: {} (Derived from total ${:.2} covering {} to {})",
+                    point.derivation.logic,
+                    total,
+                    point.derivation.period_start.unwrap(),
+                    point.derivation.period_end.unwrap()
+                );
+            } else {
+                println!("     Calculation: {}", point.derivation.logic);
+            }
+            println!("     ------------------------------------------------");
+        }
+        println!("   (... {} more months in full dataset)", series.len().saturating_sub(6));
+    }
+
     match verify_accounting_equation(&config, &dense_data, 1.0) {
         Ok(_) => println!("\n✅ Accounting Equation Holds (Assets == Liab + Equity)"),
         Err(e) => println!("\n⚠️  Balance Warning: {}", e),
@@ -102,45 +178,64 @@ async fn main() -> Result<(), Box<dyn Error>> {
     std::fs::write(config_file, json)?;
     println!("\n💾 Saved configuration to: {}", config_file);
 
-    let csv_filename = format!(
-        "{}_dense.csv",
-        pdf_paths
-            .first()
-            .and_then(|p| p.file_stem().and_then(|s| s.to_str()))
-            .unwrap_or("financial_history")
-    );
-    export_to_csv(&dense_data, &csv_filename).await?;
-    println!("💾 Saved dense financial history to: {}", csv_filename);
+    let base_name = pdf_paths
+        .first()
+        .and_then(|p| p.file_stem().and_then(|s| s.to_str()))
+        .unwrap_or("financial_history");
+
+    let pl_accounts = collect_income_accounts(&config);
+    let bs_accounts = collect_balance_accounts(&config);
+
+    let pl_filename = format!("{}_pl.csv", base_name);
+    export_to_csv_transposed(&pl_accounts, &dense_data, &pl_filename).await?;
+    println!("💾 Saved P/L to: {}", pl_filename);
+
+    let bs_filename = format!("{}_balance_sheet.csv", base_name);
+    export_to_csv_transposed(&bs_accounts, &dense_data, &bs_filename).await?;
+    println!("💾 Saved Balance Sheet to: {}", bs_filename);
 
     Ok(())
 }
 
-async fn export_to_csv(
+async fn export_to_csv_transposed(
+    accounts: &[(String, AccountType)],
     dense_data: &BTreeMap<String, DenseSeries>,
     filename: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let mut csv_out = String::new();
-    let accounts: Vec<_> = dense_data.keys().cloned().collect();
+    let mut dates = BTreeSet::new();
+    for (name, _) in accounts {
+        if let Some(series) = dense_data.get(name) {
+            for d in series.keys() {
+                dates.insert(*d);
+            }
+        }
+    }
 
-    csv_out.push_str("Date");
-    for acc in &accounts {
-        csv_out.push_str(&format!(",{}", acc));
+    if dates.is_empty() {
+        return Ok(());
+    }
+
+    let mut csv_out = String::new();
+
+    csv_out.push_str("Account");
+    for date in &dates {
+        csv_out.push_str(&format!(",{}", date));
     }
     csv_out.push('\n');
 
-    if let Some(first_series) = dense_data.values().next() {
-        for date in first_series.keys() {
-            csv_out.push_str(&date.to_string());
-            for acc in &accounts {
-                let val = dense_data
-                    .get(acc)
-                    .and_then(|s| s.get(date))
-                    .map(|p| p.value)
-                    .unwrap_or(0.0);
+    for (name, _) in accounts {
+        csv_out.push_str(name);
+        if let Some(series) = dense_data.get(name) {
+            for date in &dates {
+                let val = series.get(date).map(|p| p.value).unwrap_or(0.0);
                 csv_out.push_str(&format!(",{:.2}", val));
             }
-            csv_out.push('\n');
+        } else {
+            for _ in &dates {
+                csv_out.push_str(",0.00");
+            }
         }
+        csv_out.push('\n');
     }
 
     fs::write(filename, csv_out).await?;

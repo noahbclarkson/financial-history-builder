@@ -94,3 +94,16 @@ pub(crate) struct GenerateContentResponse {
 pub(crate) struct Candidate {
     pub content: Content,
 }
+
+#[derive(Debug, Clone)]
+pub enum ExtractionEvent {
+    Starting,
+    Uploading { filename: String },
+    DraftingResponse,
+    ProcessingResponse,
+    Validating { attempt: usize },
+    CorrectionNeeded { reason: String },
+    Patching { attempt: usize },
+    Success,
+    Failed { reason: String },
+}

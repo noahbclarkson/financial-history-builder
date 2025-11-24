@@ -187,11 +187,13 @@ Generate valid JSON matching the FinancialHistoryConfig schema."#;
             let origin_label = match point.origin {
                 DataOrigin::Anchor => "Anchor",
                 DataOrigin::Interpolated => "Interpolated",
+                DataOrigin::Allocated => "Allocated",
                 DataOrigin::BalancingPlug => "Balancing Plug",
             };
             let source_doc = point
-                .source_doc
-                .as_deref()
+                .source
+                .as_ref()
+                .map(|s| s.document_name.as_str())
                 .unwrap_or("Unknown source document");
             println!(
                 "🔎 User hovers over {} {}: Shown as '{}' from '{}'",

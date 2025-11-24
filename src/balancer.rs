@@ -1,6 +1,6 @@
 use crate::error::{FinancialHistoryError, Result};
 use crate::schema::{AccountType, FinancialHistoryConfig};
-use crate::{DataOrigin, DenseSeries, MonthlyDataPoint};
+use crate::{DataOrigin, DenseSeries, DerivationDetails, MonthlyDataPoint};
 use chrono::NaiveDate;
 use std::collections::{BTreeMap, HashSet};
 
@@ -44,7 +44,16 @@ impl<'a> AccountingBalancer<'a> {
                     MonthlyDataPoint {
                         value: required_plug,
                         origin: DataOrigin::BalancingPlug,
-                        source_doc: None,
+                        source: None,
+                        derivation: DerivationDetails {
+                            original_period_value: None,
+                            period_start: None,
+                            period_end: None,
+                            logic: format!(
+                                "System generated plug to enforce Assets ({:.2}) = Liab ({:.2}) + Equity ({:.2})",
+                                assets, liabilities, equity
+                            ),
+                        },
                     },
                 );
         }
@@ -327,7 +336,13 @@ mod tests {
             MonthlyDataPoint {
                 value: 10000.0,
                 origin: DataOrigin::Anchor,
-                source_doc: None,
+                source: None,
+                derivation: DerivationDetails {
+                    original_period_value: None,
+                    period_start: None,
+                    period_end: None,
+                    logic: "Test data".to_string(),
+                },
             },
         );
         dense_data.insert("Cash".to_string(), cash_series);
@@ -338,7 +353,13 @@ mod tests {
             MonthlyDataPoint {
                 value: 5000.0,
                 origin: DataOrigin::Anchor,
-                source_doc: None,
+                source: None,
+                derivation: DerivationDetails {
+                    original_period_value: None,
+                    period_start: None,
+                    period_end: None,
+                    logic: "Test data".to_string(),
+                },
             },
         );
         dense_data.insert("Loan".to_string(), loan_series);
@@ -384,7 +405,13 @@ mod tests {
             MonthlyDataPoint {
                 value: 10000.0,
                 origin: DataOrigin::Anchor,
-                source_doc: None,
+                source: None,
+                derivation: DerivationDetails {
+                    original_period_value: None,
+                    period_start: None,
+                    period_end: None,
+                    logic: "Test data".to_string(),
+                },
             },
         );
         dense_data.insert("Cash".to_string(), cash_series);
@@ -395,7 +422,13 @@ mod tests {
             MonthlyDataPoint {
                 value: 3000.0,
                 origin: DataOrigin::Anchor,
-                source_doc: None,
+                source: None,
+                derivation: DerivationDetails {
+                    original_period_value: None,
+                    period_start: None,
+                    period_end: None,
+                    logic: "Test data".to_string(),
+                },
             },
         );
         dense_data.insert("Loan".to_string(), loan_series);
