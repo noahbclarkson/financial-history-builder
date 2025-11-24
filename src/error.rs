@@ -10,10 +10,7 @@ pub enum FinancialHistoryError {
     NoAnchors(String),
 
     #[error("Validation Error in Account '{account}': {details}")]
-    ValidationError {
-        account: String,
-        details: String,
-    },
+    ValidationError { account: String, details: String },
 
     #[error("Invalid noise factor {0}: must be between 0.0 and 1.0")]
     InvalidNoiseFactor(f64),

@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SourceMetadata {
-    #[schemars(description = "The EXACT filename from the Document Manifest. Do not invent or modify filenames.")]
+    #[schemars(
+        description = "The EXACT filename from the Document Manifest. Do not invent or modify filenames."
+    )]
     pub document_name: String,
 
     #[schemars(

@@ -26,22 +26,51 @@ impl GeminiClient {
         }
     }
 
+    /// Upload a file from a local path (CLI/Desktop use case)
     pub async fn upload_document(&self, path: &Path) -> Result<RemoteDocument> {
         let file_name = path
             .file_name()
             .and_then(|n| n.to_str())
             .ok_or_else(|| {
                 FinancialHistoryError::ExtractionFailed("Invalid file name".to_string())
-            })?;
+            })?
+            .to_string();
 
-        let file_size = fs::metadata(path).await?.len();
         let mime_type = mime_guess::from_path(path)
             .first_or_octet_stream()
             .to_string();
+
         let file_bytes = fs::read(path).await?;
 
+        self.perform_resumable_upload(&file_name, &mime_type, file_bytes)
+            .await
+    }
+
+    /// Upload a file from memory bytes (Server/API use case).
+    /// Useful when handling multipart uploads in web frameworks (Axum/Actix)
+    /// where you have the bytes in memory but no file on disk.
+    pub async fn upload_document_from_bytes(
+        &self,
+        filename: &str,
+        mime_type: &str,
+        data: Vec<u8>,
+    ) -> Result<RemoteDocument> {
+        self.perform_resumable_upload(filename, mime_type, data)
+            .await
+    }
+
+    /// Shared internal logic for Google's Resumable Upload Protocol
+    async fn perform_resumable_upload(
+        &self,
+        display_name: &str,
+        mime_type: &str,
+        file_bytes: Vec<u8>,
+    ) -> Result<RemoteDocument> {
+        let file_size = file_bytes.len();
+
+        // 1. Initiate Upload
         let start_url = format!("{}?key={}", GEMINI_UPLOAD_URL, self.api_key);
-        let metadata = json!({ "file": { "display_name": file_name } });
+        let metadata = json!({ "file": { "display_name": display_name } });
 
         let init_res = self
             .client
@@ -49,18 +78,17 @@ impl GeminiClient {
             .header("X-Goog-Upload-Protocol", "resumable")
             .header("X-Goog-Upload-Command", "start")
             .header("X-Goog-Upload-Header-Content-Length", file_size.to_string())
-            .header("X-Goog-Upload-Header-Content-Type", &mime_type)
+            .header("X-Goog-Upload-Header-Content-Type", mime_type)
             .header("Content-Type", "application/json")
             .json(&metadata)
             .send()
             .await?;
 
-        let init_status = init_res.status();
-        if !init_status.is_success() {
+        if !init_res.status().is_success() {
             let error_text = init_res.text().await?;
             return Err(FinancialHistoryError::ExtractionFailed(format!(
-                "Upload init failed (status {}): {}",
-                init_status, error_text
+                "Upload init failed: {}",
+                error_text
             )));
         }
 
@@ -68,12 +96,15 @@ impl GeminiClient {
             .headers()
             .get("x-goog-upload-url")
             .ok_or_else(|| {
-                FinancialHistoryError::ExtractionFailed("No upload URL in headers".to_string())
+                FinancialHistoryError::ExtractionFailed(
+                    "No x-goog-upload-url header returned".to_string(),
+                )
             })?
             .to_str()
             .map_err(|e| FinancialHistoryError::ExtractionFailed(e.to_string()))?
             .to_string();
 
+        // 2. Upload Bytes
         let upload_res = self
             .client
             .post(&upload_url)
@@ -84,42 +115,38 @@ impl GeminiClient {
             .send()
             .await?;
 
-        let upload_status = upload_res.status();
-        if !upload_status.is_success() {
+        if !upload_res.status().is_success() {
             let error_text = upload_res.text().await?;
             return Err(FinancialHistoryError::ExtractionFailed(format!(
-                "File upload failed (status {}): {}",
-                upload_status, error_text
+                "File upload failed: {}",
+                error_text
             )));
         }
 
         let upload_body: serde_json::Value = upload_res.json().await?;
         let file_obj = upload_body.get("file").ok_or_else(|| {
-            FinancialHistoryError::ExtractionFailed("Upload response missing 'file'".to_string())
+            FinancialHistoryError::ExtractionFailed(
+                "Upload response missing 'file' object".to_string(),
+            )
         })?;
 
         let uri = file_obj
             .get("uri")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                FinancialHistoryError::ExtractionFailed("Upload response missing uri".to_string())
-            })?
+            .unwrap_or("")
             .to_string();
-
         let name = file_obj
             .get("name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                FinancialHistoryError::ExtractionFailed("Upload response missing name".to_string())
-            })?
+            .unwrap_or("")
             .to_string();
-
         let mut state = file_obj
             .get("state")
             .and_then(|v| v.as_str())
             .unwrap_or("PROCESSING")
             .to_string();
 
+        // 3. Poll for Active State
         while state != "ACTIVE" {
             let check_url = format!("{}/{}?key={}", self.base_url, name, self.api_key);
             let check_res = self.client.get(&check_url).send().await?;
@@ -135,18 +162,18 @@ impl GeminiClient {
                 "ACTIVE" => break,
                 "FAILED" => {
                     return Err(FinancialHistoryError::ExtractionFailed(
-                        "Google failed to process the file".to_string(),
+                        "Google processing failed".to_string(),
                     ))
                 }
-                _ => sleep(Duration::from_secs(2)).await,
+                _ => sleep(Duration::from_secs(1)).await,
             }
         }
 
         Ok(RemoteDocument {
             uri,
             name,
-            display_name: file_name.to_string(),
-            mime_type,
+            display_name: display_name.to_string(),
+            mime_type: mime_type.to_string(),
             state,
         })
     }
@@ -157,6 +184,7 @@ impl GeminiClient {
         system_prompt: &str,
         messages: Vec<Content>,
         response_schema: Option<serde_json::Value>,
+        response_mime_type: &str,
     ) -> Result<String> {
         let url = format!(
             "{}/models/{}:generateContent?key={}",
@@ -174,7 +202,7 @@ impl GeminiClient {
             contents: messages,
             system_instruction: system_content,
             generation_config: GenerationConfig {
-                response_mime_type: "application/json".to_string(),
+                response_mime_type: response_mime_type.to_string(),
                 response_schema,
             },
         };

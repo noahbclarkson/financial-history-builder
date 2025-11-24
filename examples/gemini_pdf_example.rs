@@ -60,7 +60,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!(
             "   ✅ Uploaded: {} ({})",
             doc.display_name,
-            if doc.is_active() { "ACTIVE" } else { &doc.state }
+            if doc.is_active() {
+                "ACTIVE"
+            } else {
+                &doc.state
+            }
         );
     }
     println!();
@@ -69,7 +73,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (tx, mut rx) = mpsc::channel(32);
 
     // Spawn the extraction in a separate task
-    let extraction_handle = tokio::spawn(async move { extractor.extract(&documents, Some(tx)).await });
+    let extraction_handle =
+        tokio::spawn(async move { extractor.extract(&documents, Some(tx)).await });
 
     // Poll the channel and print real-time updates
     tokio::spawn(async move {
@@ -165,7 +170,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             println!("     ------------------------------------------------");
         }
-        println!("   (... {} more months in full dataset)", series.len().saturating_sub(6));
+        println!(
+            "   (... {} more months in full dataset)",
+            series.len().saturating_sub(6)
+        );
     }
 
     match verify_accounting_equation(&config, &dense_data, 1.0) {

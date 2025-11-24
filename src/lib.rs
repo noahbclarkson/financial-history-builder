@@ -188,13 +188,17 @@ fn validate_config_integrity(config: &FinancialHistoryConfig) -> Result<()> {
 
     for account in &config.balance_sheet {
         if account.noise_factor < 0.0 || account.noise_factor > 1.0 {
-            return Err(FinancialHistoryError::InvalidNoiseFactor(account.noise_factor));
+            return Err(FinancialHistoryError::InvalidNoiseFactor(
+                account.noise_factor,
+            ));
         }
     }
 
     for account in &config.income_statement {
         if account.noise_factor < 0.0 || account.noise_factor > 1.0 {
-            return Err(FinancialHistoryError::InvalidNoiseFactor(account.noise_factor));
+            return Err(FinancialHistoryError::InvalidNoiseFactor(
+                account.noise_factor,
+            ));
         }
     }
 

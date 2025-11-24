@@ -31,9 +31,7 @@ impl FinancialExtractor {
         documents: &[RemoteDocument],
         progress: Option<Sender<ExtractionEvent>>,
     ) -> Result<FinancialHistoryConfig> {
-        let _ = self
-            .send_event(&progress, ExtractionEvent::Starting)
-            .await;
+        let _ = self.send_event(&progress, ExtractionEvent::Starting).await;
 
         // --- Step 1: Build Document Manifest ---
         // This tells the AI: "The first file you see is named X, the second is Y..."
@@ -67,19 +65,22 @@ impl FinancialExtractor {
 
         let raw_json = self
             .client
-            .generate_content(&self.model, &self.system_prompt, messages.clone(), None)
+            .generate_content(
+                &self.model,
+                &self.system_prompt,
+                messages.clone(),
+                None,
+                "application/json",
+            )
             .await?;
 
         let _ = self
             .send_event(&progress, ExtractionEvent::ProcessingResponse)
             .await;
 
-        let mut current_json_value: serde_json::Value = serde_json::from_str(&raw_json)
-            .map_err(|e| {
-                FinancialHistoryError::ExtractionFailed(format!(
-                    "Initial JSON parse failed: {}",
-                    e
-                ))
+        let mut current_json_value: serde_json::Value =
+            serde_json::from_str(&raw_json).map_err(|e| {
+                FinancialHistoryError::ExtractionFailed(format!("Initial JSON parse failed: {}", e))
             })?;
 
         let mut current_config: FinancialHistoryConfig =
@@ -135,9 +136,7 @@ impl FinancialExtractor {
                 current_config = serde_json::from_value(current_json_value.clone())?;
             } else {
                 // No errors found!
-                let _ = self
-                    .send_event(&progress, ExtractionEvent::Success)
-                    .await;
+                let _ = self.send_event(&progress, ExtractionEvent::Success).await;
                 return Ok(current_config);
             }
         }
@@ -235,6 +234,7 @@ impl FinancialExtractor {
                 "You are a JSON Repair Agent.",
                 history.clone(),
                 None,
+                "application/json",
             )
             .await?;
 

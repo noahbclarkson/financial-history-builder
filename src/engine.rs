@@ -251,21 +251,20 @@ impl Densifier {
                         slot.original_period_info = None; // It's not derived, it IS the value
                     } else {
                         slot.origin = DataOrigin::Allocated;
-                        let period_type = if (constraint.end_date.ordinal() - constraint.start_date.ordinal()) > 360 {
+                        let period_type = if (constraint.end_date.ordinal()
+                            - constraint.start_date.ordinal())
+                            > 360
+                        {
                             "Annual"
                         } else {
                             "Period"
                         };
                         slot.derivation_logic = format!(
                             "Allocated portion of {} total (Seasonality: {:?})",
-                            period_type,
-                            account.seasonality_profile
+                            period_type, account.seasonality_profile
                         );
-                        slot.original_period_info = Some((
-                            constraint.value,
-                            constraint.start_date,
-                            constraint.end_date,
-                        ));
+                        slot.original_period_info =
+                            Some((constraint.value, constraint.start_date, constraint.end_date));
                     }
                 }
             }
