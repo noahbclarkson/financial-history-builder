@@ -210,6 +210,7 @@ impl GeminiClient {
         response_schema: Option<serde_json::Value>,
         response_mime_type: &str,
         max_output_tokens: Option<u32>,
+        debug_label: &str,
     ) -> Result<String> {
         let url = format!(
             "{}/models/{}:generateContent?key={}",
@@ -234,37 +235,105 @@ impl GeminiClient {
         };
 
         let res = self.client.post(&url).json(&payload).send().await?;
-        let status = res.status();
 
-        if !status.is_success() {
-            let err_text = res.text().await?;
+        if !res.status().is_success() {
+            let status = res.status();
+            let err_text = res.text().await.unwrap_or_default();
             return Err(FinancialHistoryError::ExtractionFailed(format!(
-                "Gemini API Error (status {}): {}",
+                "API Request Failed ({}): {}",
                 status, err_text
             )));
         }
 
-        let body: GenerateContentResponse = res.json().await?;
+        // Always capture the raw body so we can dump it if decoding fails.
+        let raw_body = res.text().await?;
+        let body: GenerateContentResponse = serde_json::from_str(&raw_body).map_err(|e| {
+            // Sanitize label for filename
+            let safe_label: String = debug_label
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let filename = format!("debug_raw_model_response_{}_{}.json", safe_label, timestamp);
+            let _ = std::fs::write(&filename, &raw_body);
 
-        let text = body
-            .candidates
-            .ok_or_else(|| {
-                FinancialHistoryError::ExtractionFailed("No candidates returned".to_string())
-            })?
-            .first()
-            .ok_or_else(|| {
-                FinancialHistoryError::ExtractionFailed("Empty candidates list".to_string())
-            })?
-            .content
-            .parts
-            .first()
-            .ok_or_else(|| {
-                FinancialHistoryError::ExtractionFailed("No parts in content".to_string())
-            })?
-            .clone();
+            FinancialHistoryError::ExtractionFailed(format!(
+                "Failed to decode model response: {}. Raw response dumped to {}",
+                e, filename
+            ))
+        })?;
 
-        match text {
-            Part::Text { text } => Ok(text),
+        // 1. Check for prompt blocking (Safety)
+        if let Some(feedback) = body.prompt_feedback {
+            if let Some(reason) = feedback.block_reason {
+                return Err(FinancialHistoryError::ExtractionFailed(format!(
+                    "Prompt blocked by safety settings. Reason: {}",
+                    reason
+                )));
+            }
+        }
+
+        // 2. Check candidates
+        let candidates = body.candidates.ok_or_else(|| {
+            FinancialHistoryError::ExtractionFailed(
+                "No candidates returned (Prompt filtered?)".to_string(),
+            )
+        })?;
+
+        let first_candidate = candidates.first().ok_or_else(|| {
+            FinancialHistoryError::ExtractionFailed("Empty candidate list".to_string())
+        })?;
+
+        // 3. Check finish reason
+        if let Some(reason) = &first_candidate.finish_reason {
+            if reason != "STOP" {
+                println!("⚠️  Finish Reason: {}", reason);
+            }
+            if reason == "SAFETY" || reason == "RECITATION" {
+                return Err(FinancialHistoryError::ExtractionFailed(format!(
+                    "Generation stopped due to: {}",
+                    reason
+                )));
+            }
+            if reason == "MAX_TOKENS" {
+                // Dump the truncated response for debugging
+                if let Some(content) = &first_candidate.content {
+                    if let Some(Part::Text { text }) = content.parts.first() {
+                        let timestamp = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs();
+                        let filename = format!("debug_max_tokens_truncated_{}.json", timestamp);
+                        let _ = std::fs::write(&filename, text);
+                        eprintln!(
+                            "❌ MAX_TOKENS error: Truncated response dumped to {}",
+                            filename
+                        );
+                    }
+                }
+                return Err(FinancialHistoryError::ExtractionFailed(
+                    "MAX_TOKENS: Response was truncated. The output is likely incomplete and invalid JSON. \
+                    Try reducing the scope of the request or increasing max_output_tokens.".to_string()
+                ));
+            }
+        }
+
+        // 4. Extract text
+        let content = first_candidate.content.as_ref().ok_or_else(|| {
+            FinancialHistoryError::ExtractionFailed(
+                "Candidate has no content (Safety block)".to_string(),
+            )
+        })?;
+
+        let part = content.parts.first().ok_or_else(|| {
+            FinancialHistoryError::ExtractionFailed("No parts in content".to_string())
+        })?;
+
+        match part {
+            Part::Text { text } => Ok(text.clone()),
             _ => Err(FinancialHistoryError::ExtractionFailed(
                 "Model returned non-text content".to_string(),
             )),

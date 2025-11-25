@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SourceMetadata {
     #[schemars(
-        description = "The EXACT filename from the Document Manifest. Do not invent or modify filenames."
+        description = "The Document ID from the manifest (e.g., \"0\", \"1\", \"2\"). Use ONLY the numeric ID, not the filename."
     )]
     pub document_name: String,
 
@@ -204,6 +204,57 @@ pub struct IncomeStatementAccount {
     pub noise_factor: f64,
 }
 
+// --- Intermediate Schemas for Multi-Step Extraction ---
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DiscoveryResponse {
+    #[schemars(description = "The legal name of the organization")]
+    pub organization_name: String,
+
+    #[schemars(description = "The month when the fiscal year ends (1-12)")]
+    pub fiscal_year_end_month: u32,
+
+    #[schemars(
+        description = "List of ALL unique Balance Sheet account names found. Leaf nodes only."
+    )]
+    pub balance_sheet_account_names: Vec<String>,
+
+    #[schemars(
+        description = "List of ALL unique Income Statement account names found. Leaf nodes only."
+    )]
+    pub income_statement_account_names: Vec<String>,
+}
+
+impl DiscoveryResponse {
+    pub fn get_schema() -> Result<serde_json::Value, serde_json::Error> {
+        FinancialHistoryConfig::clean_schema(schemars::schema_for!(DiscoveryResponse))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BalanceSheetExtractionResponse {
+    pub balance_sheet: Vec<BalanceSheetAccount>,
+}
+
+impl BalanceSheetExtractionResponse {
+    pub fn get_schema() -> Result<serde_json::Value, serde_json::Error> {
+        FinancialHistoryConfig::clean_schema(schemars::schema_for!(BalanceSheetExtractionResponse))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct IncomeStatementExtractionResponse {
+    pub income_statement: Vec<IncomeStatementAccount>,
+}
+
+impl IncomeStatementExtractionResponse {
+    pub fn get_schema() -> Result<serde_json::Value, serde_json::Error> {
+        FinancialHistoryConfig::clean_schema(schemars::schema_for!(
+            IncomeStatementExtractionResponse
+        ))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FinancialHistoryConfig {
     #[schemars(description = "The legal name of the organization/business")]
@@ -233,7 +284,13 @@ impl FinancialHistoryConfig {
     /// Generates a Gemini-compatible schema.
     /// This performs deep cleaning to remove fields Gemini dislikes ($ref, type arrays, additionalProperties).
     pub fn get_gemini_response_schema() -> Result<serde_json::Value, serde_json::Error> {
-        let root = Self::generate_json_schema();
+        Self::clean_schema(Self::generate_json_schema())
+    }
+
+    /// Shared schema cleaning logic that can be reused by other types
+    pub fn clean_schema(
+        root: schemars::schema::RootSchema,
+    ) -> Result<serde_json::Value, serde_json::Error> {
         let mut root_val = serde_json::to_value(root)?;
 
         // 1. Extract definitions map
@@ -268,10 +325,7 @@ impl FinancialHistoryConfig {
 }
 
 /// Main recursive processor
-fn process_schema_node(
-    node: &mut serde_json::Value,
-    definitions: &serde_json::Value,
-) {
+fn process_schema_node(node: &mut serde_json::Value, definitions: &serde_json::Value) {
     match node {
         serde_json::Value::Object(map) => {
             // A. Handle $ref inlining
@@ -297,7 +351,8 @@ fn process_schema_node(
             if let Some(serde_json::Value::Array(types)) = map.get("type") {
                 if types.len() == 2 && types.contains(&serde_json::json!("null")) {
                     // Find the actual type (e.g., "string" or "object")
-                    if let Some(real_type) = types.iter().find(|t| *t != &serde_json::json!("null")) {
+                    if let Some(real_type) = types.iter().find(|t| *t != &serde_json::json!("null"))
+                    {
                         let real_type_clone = real_type.clone();
                         map.insert("type".to_string(), real_type_clone);
                         map.insert("nullable".to_string(), serde_json::json!(true));
@@ -312,7 +367,15 @@ fn process_schema_node(
             // D. Recurse into children
             // We must iterate over keys that contain nested schemas
             let keys_to_recurse = vec![
-                "properties", "items", "allOf", "anyOf", "oneOf", "not", "if", "then", "else"
+                "properties",
+                "items",
+                "allOf",
+                "anyOf",
+                "oneOf",
+                "not",
+                "if",
+                "then",
+                "else",
             ];
 
             for key in keys_to_recurse {

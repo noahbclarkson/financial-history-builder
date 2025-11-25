@@ -252,11 +252,7 @@ impl Densifier {
                     } else {
                         slot.origin = DataOrigin::Allocated;
                         let days_diff = (constraint.end_date - constraint.start_date).num_days();
-                        let period_type = if days_diff > 360 {
-                            "Annual"
-                        } else {
-                            "Period"
-                        };
+                        let period_type = if days_diff > 360 { "Annual" } else { "Period" };
                         slot.derivation_logic = format!(
                             "Allocated portion of {} total (Seasonality: {:?})",
                             period_type, account.seasonality_profile

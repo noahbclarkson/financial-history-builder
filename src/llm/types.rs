@@ -23,7 +23,9 @@ pub struct ModelMetadata {
     pub output_token_limit: u32,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+// --- Content Structures ---
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Content {
     pub role: String,
     pub parts: Vec<Part>,
@@ -64,19 +66,19 @@ impl Content {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(untagged)]
 pub enum Part {
     Text {
-        text: String
+        text: String,
     },
     FileData {
         #[serde(rename = "fileData")]
-        file_data: FileData
+        file_data: FileData,
     },
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct FileData {
     pub mime_type: String,
@@ -104,25 +106,41 @@ pub(crate) struct GenerationConfig {
     pub max_output_tokens: Option<u32>,
 }
 
-#[derive(Deserialize)]
+// --- API Response Structures ---
+
+#[derive(Deserialize, Debug)]
 pub(crate) struct GenerateContentResponse {
     pub candidates: Option<Vec<Candidate>>,
+    #[serde(rename = "promptFeedback")]
+    pub prompt_feedback: Option<PromptFeedback>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
+pub(crate) struct PromptFeedback {
+    #[serde(rename = "blockReason")]
+    pub block_reason: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
 pub(crate) struct Candidate {
-    pub content: Content,
+    // Optional because safety filters can return a candidate with no content
+    pub content: Option<Content>,
+    #[serde(rename = "finishReason")]
+    pub finish_reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub enum ExtractionEvent {
     Starting,
     Uploading { filename: String },
+    Step1Discovery,
+    Step2Extraction,
+    Step3Assembly,
     DraftingResponse,
     ProcessingResponse,
     Validating { attempt: usize },
     CorrectionNeeded { reason: String },
-    Patching { attempt: usize },
+    Retry { attempt: usize, error: String },
     Success,
     Failed { reason: String },
 }

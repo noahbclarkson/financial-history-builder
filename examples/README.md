@@ -189,7 +189,3 @@ For production systems:
 4. **Rate Limiting**: Implement rate limiting for API calls
 5. **Caching**: Cache results to avoid redundant API calls
 6. **Monitoring**: Track extraction accuracy and API costs
-
-## License
-
-MIT

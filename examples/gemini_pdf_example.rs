@@ -86,6 +86,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 ExtractionEvent::Uploading { filename } => {
                     println!("📤 Uploading: {}", filename);
                 }
+                ExtractionEvent::Step1Discovery => {
+                    println!("🔍 STEP 1: Discovering organization info and chart of accounts...");
+                }
+                ExtractionEvent::Step2Extraction => {
+                    println!(
+                        "📊 STEP 2: Extracting Balance Sheet and Income Statement in parallel..."
+                    );
+                }
+                ExtractionEvent::Step3Assembly => {
+                    println!("🔧 STEP 3: Assembling and resolving document IDs...");
+                }
                 ExtractionEvent::DraftingResponse => {
                     println!("🤖 AI is reading documents and drafting initial JSON...");
                 }
@@ -97,10 +108,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
                 ExtractionEvent::CorrectionNeeded { reason } => {
                     println!("⚠️  Issue detected: {}", reason);
-                    println!("   Requesting AI to generate a patch...");
                 }
-                ExtractionEvent::Patching { attempt } => {
-                    println!("🩹 Applying JSON Patch {}...", attempt);
+                ExtractionEvent::Retry { attempt, error } => {
+                    println!("🔄 Retry attempt {} - Previous error: {}", attempt, error);
                 }
                 ExtractionEvent::Success => {
                     println!("✅ Extraction and validation successful!");

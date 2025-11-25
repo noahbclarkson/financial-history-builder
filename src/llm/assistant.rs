@@ -53,6 +53,7 @@ impl DocumentAssistant {
                 None,
                 "text/plain",
                 None,
+                "document_assistant",
             )
             .await?;
 
