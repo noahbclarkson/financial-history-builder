@@ -251,10 +251,8 @@ impl Densifier {
                         slot.original_period_info = None; // It's not derived, it IS the value
                     } else {
                         slot.origin = DataOrigin::Allocated;
-                        let period_type = if (constraint.end_date.ordinal()
-                            - constraint.start_date.ordinal())
-                            > 360
-                        {
+                        let days_diff = (constraint.end_date - constraint.start_date).num_days();
+                        let period_type = if days_diff > 360 {
                             "Annual"
                         } else {
                             "Period"
