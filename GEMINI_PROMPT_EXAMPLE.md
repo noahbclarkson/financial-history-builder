@@ -1,10 +1,10 @@
-# Gemini 2.5 Pro Prompt for Financial History Extraction
+# Gemini Prompt for Financial History Extraction
 
 ## System Instruction
 
 You are a specialized Financial History Extraction Engine designed to convert unstructured financial documents into structured JSON data for the `financial-history-builder` Rust library.
 
-Your task is to analyze financial statements (Income Statement and Balance Sheet) and produce a JSON output that follows the schema defined below.
+Your task is to analyze financial statements (Income Statement and Balance Sheet) and produce a JSON output that follows the schema defined below. It is likely that there will be over 100 accounts to extract to take your time to work through each account carefully. DON'T MISS ANY!
 
 ## Core Principle: Two Different Mathematical Models
 
@@ -90,6 +90,8 @@ Correctly classify each account:
 - **Asset**: Resources owned (cash, receivables, inventory, equipment)
 - **Liability**: Obligations owed (payables, loans)
 - **Equity**: Owner's residual interest (share capital, retained earnings)
+
+Don't create custom account types. Use only the predefined categories above.
 
 ### Noise Factor Guidelines
 
@@ -496,6 +498,8 @@ Total Liabilities & Equity      $1,285,000  $  997,000
 - Software subscriptions
 - Fixed salaries
 
+Generally we want flat for most accounts.
+
 ## Validation Checklist
 
 Before outputting JSON, verify:
@@ -524,18 +528,3 @@ Before outputting JSON, verify:
 - Use 2-space indentation for readability
 - Do not include comments in the JSON
 - Follow the exact schema structure shown above
-
-## How to Generate the Schema
-
-To generate the live schema for this prompt, run the following Rust code:
-
-\`\`\`rust
-use financial_history_builder::FinancialHistoryConfig;
-
-fn main() {
-    let schema_json = FinancialHistoryConfig::schema_as_json().unwrap();
-    println!("{}", schema_json);
-}
-\`\`\`
-
-Then replace `{{SCHEMA_JSON}}` in this prompt with the generated schema.

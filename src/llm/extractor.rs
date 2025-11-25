@@ -34,7 +34,6 @@ impl FinancialExtractor {
         let _ = self.send_event(&progress, ExtractionEvent::Starting).await;
 
         // --- Step 1: Build Document Manifest ---
-        // This tells the AI: "The first file you see is named X, the second is Y..."
         let mut doc_manifest = String::from(
             "\n### 📂 DOCUMENT MANIFEST\n\
             You have received the following files. You MUST use these EXACT filenames in the `source.document_name` field:\n",
@@ -54,22 +53,28 @@ impl FinancialExtractor {
             CRITICAL INSTRUCTIONS:\n\
             1. **Source Tracking**: Every numeric value MUST have a `source` populated.\n\
                - `document_name`: Must match a name from the Document Manifest exactly.\n\
-               - `original_text`: ONLY required if the row label differs from the account name, OR the value came from narrative text, OR the value was inferred. If the account name matches the table row label exactly, you may omit `original_text`.\n\
+               - `original_text`: ONLY required if the row label differs from the account name, OR the value came from narrative text, OR the value was inferred.\n\
             2. **Fiscal Year**: Determine the correct fiscal year end month.\n\
-            3. **Overlapping Periods**: Do not calculate values. Only extract what is explicitly written (e.g. if Q1 and Full Year are both present, extract both).\n\
-            4. **Output**: Return ONLY valid JSON matching the schema.",
+            3. **Output**: Return ONLY valid JSON matching the schema.",
             doc_manifest
         );
 
         let mut messages = vec![Content::user_with_files(user_instructions, documents)];
 
-        let raw_json = self
+        // Generate Schema string for potential error correction later
+        let target_schema_str = FinancialHistoryConfig::schema_as_json()
+            .unwrap_or_else(|_| "Could not generate schema".to_string());
+        
+        // Generate Schema Value for the API call
+        let target_schema_value = FinancialHistoryConfig::schema_as_json_value()?;
+
+        let raw_json_response = self
             .client
             .generate_content(
                 &self.model,
                 &self.system_prompt,
                 messages.clone(),
-                None,
+                Some(target_schema_value), // <--- FIXED: Now sending the schema!
                 "application/json",
             )
             .await?;
@@ -78,15 +83,16 @@ impl FinancialExtractor {
             .send_event(&progress, ExtractionEvent::ProcessingResponse)
             .await;
 
+        // Clean potential markdown blocks from the initial response
+        let cleaned_json = clean_json_output(&raw_json_response);
+
+        // Parse into untyped Value first. If this fails, it's a syntax error (invalid JSON).
         let mut current_json_value: serde_json::Value =
-            serde_json::from_str(&raw_json).map_err(|e| {
-                FinancialHistoryError::ExtractionFailed(format!("Initial JSON parse failed: {}", e))
+            serde_json::from_str(&cleaned_json).map_err(|e| {
+                FinancialHistoryError::ExtractionFailed(format!("Initial JSON Syntax Error: {}", e))
             })?;
 
-        let mut current_config: FinancialHistoryConfig =
-            serde_json::from_value(current_json_value.clone())?;
-
-        // --- Step 2: Validation & Correction Loop ---
+        // --- Step 3: Validation & Correction Loop ---
         let max_retries = 3;
 
         for attempt in 1..=max_retries {
@@ -94,54 +100,82 @@ impl FinancialExtractor {
                 .send_event(&progress, ExtractionEvent::Validating { attempt })
                 .await;
 
-            // Check 1: Math & Logic
-            let validation_error = match process_financial_history(&current_config) {
-                Ok(dense_data) => {
-                    match verify_accounting_equation(&current_config, &dense_data, 1.0) {
-                        Ok(_) => None, // Math is good!
-                        Err(e) => Some(format!("Accounting Equation Violation: {}", e)),
-                    }
+            // 1. Attempt Deserialization (Schema Check)
+            // We move this INSIDE the loop to catch structural errors
+            let config_result: serde_json::Result<FinancialHistoryConfig> =
+                serde_json::from_value(current_json_value.clone());
+
+            let error_to_fix: Option<String>;
+            let mut current_config: Option<FinancialHistoryConfig> = None;
+            let mut is_schema_error = false;
+
+            match config_result {
+                Err(e) => {
+                    // CASE A: Deserialization failed. The JSON does not match the Rust struct.
+                    is_schema_error = true;
+                    error_to_fix = Some(format!(
+                        "JSON SCHEMA ERROR: The JSON provided does not match the required schema.\n\
+                        Error Details: {}\n\
+                        Required Schema: {}", 
+                        e, target_schema_str
+                    ));
                 }
-                Err(e) => Some(format!("Structural/Logic Error: {}", e)),
-            };
+                Ok(cfg) => {
+                    // CASE B: Deserialization succeeded. Check Math & Logic.
+                    current_config = Some(cfg.clone());
+                    
+                    // Check Math
+                    let math_error = match process_financial_history(&cfg) {
+                        Ok(dense_data) => {
+                            match verify_accounting_equation(&cfg, &dense_data, 1.0) {
+                                Ok(_) => None, // Math is good!
+                                Err(e) => Some(format!("Accounting Equation Violation: {}", e)),
+                            }
+                        }
+                        Err(e) => Some(format!("Structural/Logic Error: {}", e)),
+                    };
 
-            // Check 2: Missing Sources (The "Trust" Layer)
-            // Only run this if math is okay, to avoid overwhelming the model
-            let source_error = if validation_error.is_none() {
-                self.check_missing_sources(&current_config)
-            } else {
-                None
-            };
+                    // Check Sources (if math is ok)
+                    error_to_fix = if math_error.is_none() {
+                        self.check_missing_sources(&cfg)
+                    } else {
+                        math_error
+                    };
+                }
+            }
 
-            // Decide if we need to patch
-            let error_to_fix = validation_error.or(source_error);
-
+            // 2. Decide: Success or Patch?
             if let Some(error_msg) = error_to_fix {
                 let _ = self
                     .send_event(
                         &progress,
                         ExtractionEvent::CorrectionNeeded {
-                            reason: error_msg.clone(),
+                            reason: if is_schema_error { 
+                                "Schema mismatch detected".to_string() 
+                            } else { 
+                                "Validation/Math logic error detected".to_string() 
+                            },
                         },
                     )
                     .await;
+                
                 let _ = self
                     .send_event(&progress, ExtractionEvent::Patching { attempt })
                     .await;
 
+                // Apply the patch to the untyped `current_json_value`
                 self.apply_patch(&mut messages, &mut current_json_value, &error_msg)
                     .await?;
-
-                // Re-hydrate config from patched JSON
-                current_config = serde_json::from_value(current_json_value.clone())?;
+                
+                // Loop continues -> will try to deserialize `current_json_value` again next iteration
             } else {
-                // No errors found!
+                // Success!
                 let _ = self.send_event(&progress, ExtractionEvent::Success).await;
-                return Ok(current_config);
+                return Ok(current_config.unwrap());
             }
         }
 
-        let msg = "Max retries exceeded. The model could not resolve validation errors.";
+        let msg = "Max retries exceeded. The model could not resolve errors.";
         let _ = self
             .send_event(
                 &progress,
@@ -201,7 +235,7 @@ impl FinancialExtractor {
                 "Validation Failed: {} data points are missing the 'source' field entirely. \
                 Every value MUST have a source with at minimum the 'document_name' field populated. \
                 Missing sources in:\n  - {}\n\
-                Please patch the JSON to add source metadata with the correct document_name from the Document Manifest.",
+                Please patch the JSON to add source metadata.",
                 missing_count, details_summary
             ))
         } else {
@@ -216,14 +250,15 @@ impl FinancialExtractor {
         error_msg: &str,
     ) -> Result<()> {
         let patch_prompt = format!(
-            "The JSON you provided failed validation:\n\nERROR: {}\n\n\
+            "The JSON you provided failed validation:\n\n{}\n\n\
             TASK: Return a JSON Patch (RFC 6902) array to fix this. \
             Do NOT return the full JSON. Return ONLY the patch array.\n\
             Example: [{{ \"op\": \"replace\", \"path\": \"/path/to/field\", \"value\": \"fixed_value\" }}]",
             error_msg
         );
 
-        // We push the *model's own bad JSON* to the history so it knows what it wrote
+        // We push the *model's own bad JSON* to the history so it knows what it wrote.
+        // We convert the current state to string to give the model context of what it needs to fix.
         history.push(Content::model(current_json.to_string()));
         history.push(Content::user(patch_prompt));
 
@@ -239,7 +274,14 @@ impl FinancialExtractor {
             .await?;
 
         let cleaned_patch = clean_json_output(&patch_str);
-        let patch: Patch = serde_json::from_str(&cleaned_patch)?;
+        
+        // Handle potential empty response or invalid patch syntax
+        let patch: Patch = serde_json::from_str(&cleaned_patch).map_err(|e| {
+             FinancialHistoryError::ExtractionFailed(format!(
+                 "AI generated invalid JSON Patch syntax: {}. Response was: {}", 
+                 e, cleaned_patch
+             ))
+        })?;
 
         json_patch::patch(current_json, &patch)?;
 
@@ -248,15 +290,16 @@ impl FinancialExtractor {
 }
 
 fn clean_json_output(raw: &str) -> String {
-    if let Some(start) = raw.find('[') {
-        if let Some(end) = raw.rfind(']') {
-            return raw[start..=end].to_string();
+    let trimmed = raw.trim();
+    if let Some(start) = trimmed.find('[') {
+        if let Some(end) = trimmed.rfind(']') {
+            return trimmed[start..=end].to_string();
         }
     }
-    if let Some(start) = raw.find('{') {
-        if let Some(end) = raw.rfind('}') {
-            return raw[start..=end].to_string();
+    if let Some(start) = trimmed.find('{') {
+        if let Some(end) = trimmed.rfind('}') {
+            return trimmed[start..=end].to_string();
         }
     }
-    raw.trim().to_string()
+    trimmed.to_string()
 }

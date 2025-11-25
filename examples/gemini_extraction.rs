@@ -119,7 +119,7 @@ Generate valid JSON matching the FinancialHistoryConfig schema."#;
     println!("🤖 Sending request to Gemini 2.5 Pro...");
 
     let request = CreateChatCompletionRequestArgs::default()
-        .model("gemini-2.5-pro")
+        .model("gemini-2.5-flash-preview-09-2025")
         .messages(vec![
             ChatCompletionRequestMessage::System(ChatCompletionRequestSystemMessage {
                 content: system_prompt.into(),

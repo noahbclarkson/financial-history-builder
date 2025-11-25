@@ -59,28 +59,38 @@ impl Content {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum Part {
-    Text { text: String },
-    FileData { file_data: FileData },
+    Text {
+        text: String
+    },
+    FileData {
+        #[serde(rename = "fileData")]
+        file_data: FileData
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct FileData {
     pub mime_type: String,
     pub file_uri: String,
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct GenerateContentRequest {
     pub contents: Vec<Content>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_instruction: Option<Content>,
-    #[serde(rename = "generationConfig")]
     pub generation_config: GenerationConfig,
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct GenerationConfig {
     pub response_mime_type: String,
+
+    // Explicitly rename to match the API documentation "responseJsonSchema"
+    #[serde(rename = "responseJsonSchema")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_schema: Option<serde_json::Value>,
 }
