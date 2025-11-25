@@ -230,6 +230,32 @@ impl FinancialHistoryConfig {
         schemars::schema_for!(FinancialHistoryConfig)
     }
 
+    /// Generates a Gemini-compatible schema.
+    /// This performs deep cleaning to remove fields Gemini dislikes ($ref, type arrays, additionalProperties).
+    pub fn get_gemini_response_schema() -> Result<serde_json::Value, serde_json::Error> {
+        let root = Self::generate_json_schema();
+        let mut root_val = serde_json::to_value(root)?;
+
+        // 1. Extract definitions map
+        let definitions = root_val
+            .get("definitions")
+            .cloned()
+            .unwrap_or(serde_json::json!({}));
+
+        // 2. Recursively inline references AND clean up Gemini incompatibilities
+        process_schema_node(&mut root_val, &definitions);
+
+        // 3. Clean up root-level forbidden keys
+        if let serde_json::Value::Object(ref mut map) = root_val {
+            map.remove("$schema");
+            map.remove("title");
+            map.remove("definitions");
+            map.remove("$defs");
+        }
+
+        Ok(root_val)
+    }
+
     pub fn schema_as_json() -> Result<String, serde_json::Error> {
         let schema = Self::generate_json_schema();
         serde_json::to_string_pretty(&schema)
@@ -238,6 +264,77 @@ impl FinancialHistoryConfig {
     pub fn schema_as_json_value() -> Result<serde_json::Value, serde_json::Error> {
         let schema = Self::generate_json_schema();
         serde_json::to_value(schema)
+    }
+}
+
+/// Main recursive processor
+fn process_schema_node(
+    node: &mut serde_json::Value,
+    definitions: &serde_json::Value,
+) {
+    match node {
+        serde_json::Value::Object(map) => {
+            // A. Handle $ref inlining
+            if let Some(serde_json::Value::String(ref_path)) = map.get("$ref") {
+                let def_name = ref_path.split('/').next_back().unwrap_or_default();
+                if let Some(def) = definitions.get(def_name) {
+                    let mut inlined_def = def.clone();
+                    // Recursive call to process the inlined definition
+                    process_schema_node(&mut inlined_def, definitions);
+                    *node = inlined_def;
+                    return; // The node is replaced, stop processing this branch
+                }
+            }
+
+            // B. Remove forbidden fields
+            map.remove("additionalProperties");
+            map.remove("title");
+            map.remove("$id");
+            map.remove("default"); // Gemini sometimes dislikes default values in schema
+
+            // C. Fix Nullable Types (Option<T>)
+            // Change {"type": ["string", "null"]} to {"type": "string", "nullable": true}
+            if let Some(serde_json::Value::Array(types)) = map.get("type") {
+                if types.len() == 2 && types.contains(&serde_json::json!("null")) {
+                    // Find the actual type (e.g., "string" or "object")
+                    if let Some(real_type) = types.iter().find(|t| *t != &serde_json::json!("null")) {
+                        let real_type_clone = real_type.clone();
+                        map.insert("type".to_string(), real_type_clone);
+                        map.insert("nullable".to_string(), serde_json::json!(true));
+                    }
+                } else if types.len() == 1 {
+                    // Flatten single-element array {"type": ["object"]} -> {"type": "object"}
+                    let single_type = types[0].clone();
+                    map.insert("type".to_string(), single_type);
+                }
+            }
+
+            // D. Recurse into children
+            // We must iterate over keys that contain nested schemas
+            let keys_to_recurse = vec![
+                "properties", "items", "allOf", "anyOf", "oneOf", "not", "if", "then", "else"
+            ];
+
+            for key in keys_to_recurse {
+                if let Some(child) = map.get_mut(key) {
+                    process_schema_node(child, definitions);
+                }
+            }
+
+            // Specifically handle properties map values
+            if let Some(serde_json::Value::Object(props)) = map.get_mut("properties") {
+                for (_, value) in props.iter_mut() {
+                    process_schema_node(value, definitions);
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            // Recurse into arrays (used in allOf, anyOf, oneOf)
+            for item in arr.iter_mut() {
+                process_schema_node(item, definitions);
+            }
+        }
+        _ => {}
     }
 }
 

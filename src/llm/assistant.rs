@@ -14,7 +14,7 @@ impl DocumentAssistant {
     /// Ask a question about a specific set of documents.
     ///
     /// # Arguments
-    /// * `model` - The model to use (e.g., "gemini-1.5-pro")
+    /// * `model` - The model to use (e.g., "gemini-2.5-pro")
     /// * `prompt` - The user's question or instruction
     /// * `documents` - Array of uploaded RemoteDocument handles
     pub async fn ask(
@@ -51,7 +51,8 @@ impl DocumentAssistant {
                 "You are a helpful assistant analyzing the provided documents.",
                 messages,
                 None,
-                "text/plain", // Model doesn't accept text/markdown; ask for plain text but format in markdown.
+                "text/plain",
+                None,
             )
             .await?;
 

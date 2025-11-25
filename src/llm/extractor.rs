@@ -33,6 +33,10 @@ impl FinancialExtractor {
     ) -> Result<FinancialHistoryConfig> {
         let _ = self.send_event(&progress, ExtractionEvent::Starting).await;
 
+        // --- Step 0: Set Token Limit ---
+        // Hardcoded to 65536 as requested for Gemini 2.5 Flash/Pro with structured outputs
+        let output_token_limit = Some(65536);
+
         // --- Step 1: Build Document Manifest ---
         let mut doc_manifest = String::from(
             "\n### 📂 DOCUMENT MANIFEST\n\
@@ -61,12 +65,14 @@ impl FinancialExtractor {
 
         let mut messages = vec![Content::user_with_files(user_instructions, documents)];
 
-        // Generate Schema string for potential error correction later
+        // Generate Schema string for potential error correction later (debugging context)
         let target_schema_str = FinancialHistoryConfig::schema_as_json()
             .unwrap_or_else(|_| "Could not generate schema".to_string());
-        
-        // Generate Schema Value for the API call
-        let target_schema_value = FinancialHistoryConfig::schema_as_json_value()?;
+
+        // Generate GEMINI COMPATIBLE Schema Value for the API call
+        // This removes $schema, definitions, and inlines all $refs
+        let target_schema_value = FinancialHistoryConfig::get_gemini_response_schema()
+            .map_err(|e| FinancialHistoryError::ExtractionFailed(format!("Schema generation error: {}", e)))?;
 
         let raw_json_response = self
             .client
@@ -74,8 +80,9 @@ impl FinancialExtractor {
                 &self.model,
                 &self.system_prompt,
                 messages.clone(),
-                Some(target_schema_value), // <--- FIXED: Now sending the schema!
+                Some(target_schema_value),
                 "application/json",
+                output_token_limit,
             )
             .await?;
 
@@ -87,10 +94,27 @@ impl FinancialExtractor {
         let cleaned_json = clean_json_output(&raw_json_response);
 
         // Parse into untyped Value first. If this fails, it's a syntax error (invalid JSON).
-        let mut current_json_value: serde_json::Value =
-            serde_json::from_str(&cleaned_json).map_err(|e| {
-                FinancialHistoryError::ExtractionFailed(format!("Initial JSON Syntax Error: {}", e))
-            })?;
+        // --- Step 3: Parse with Auto-Repair for Truncation ---
+        let mut current_json_value: serde_json::Value = match serde_json::from_str(&cleaned_json) {
+            Ok(v) => v,
+            Err(e) => {
+                if e.is_eof() || e.to_string().contains("EOF") {
+                    let _ = self.send_event(&progress, ExtractionEvent::CorrectionNeeded {
+                        reason: "JSON truncated. Applying auto-repair...".to_string()
+                    }).await;
+
+                    let repaired_json = try_repair_truncated_json(&cleaned_json);
+
+                    serde_json::from_str(&repaired_json).map_err(|e2| {
+                        FinancialHistoryError::ExtractionFailed(format!(
+                            "Failed to parse even after auto-repair. Orig Error: {}. Repair Error: {}", e, e2
+                        ))
+                    })?
+                } else {
+                    return Err(FinancialHistoryError::ExtractionFailed(format!("Initial JSON Syntax Error: {}", e)));
+                }
+            }
+        };
 
         // --- Step 3: Validation & Correction Loop ---
         let max_retries = 3;
@@ -164,7 +188,7 @@ impl FinancialExtractor {
                     .await;
 
                 // Apply the patch to the untyped `current_json_value`
-                self.apply_patch(&mut messages, &mut current_json_value, &error_msg)
+                self.apply_patch(&mut messages, &mut current_json_value, &error_msg, output_token_limit)
                     .await?;
                 
                 // Loop continues -> will try to deserialize `current_json_value` again next iteration
@@ -248,6 +272,7 @@ impl FinancialExtractor {
         history: &mut Vec<Content>,
         current_json: &mut serde_json::Value,
         error_msg: &str,
+        max_tokens: Option<u32>,
     ) -> Result<()> {
         let patch_prompt = format!(
             "The JSON you provided failed validation:\n\n{}\n\n\
@@ -270,6 +295,7 @@ impl FinancialExtractor {
                 history.clone(),
                 None,
                 "application/json",
+                max_tokens,
             )
             .await?;
 
@@ -287,6 +313,55 @@ impl FinancialExtractor {
 
         Ok(())
     }
+}
+
+fn try_repair_truncated_json(json_str: &str) -> String {
+    let mut balance_stack = Vec::new();
+    let mut in_string = false;
+    let mut escape = false;
+
+    for c in json_str.chars() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        if c == '\\' {
+            escape = true;
+            continue;
+        }
+        if c == '"' {
+            in_string = !in_string;
+            continue;
+        }
+        if !in_string {
+            match c {
+                '{' => balance_stack.push('}'),
+                '[' => balance_stack.push(']'),
+                '}' => {
+                    if Some(&'}') == balance_stack.last() {
+                        balance_stack.pop();
+                    }
+                }
+                ']' => {
+                    if Some(&']') == balance_stack.last() {
+                        balance_stack.pop();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut repaired = json_str.to_string();
+    if in_string {
+        repaired.push('"');
+    }
+
+    while let Some(closing_char) = balance_stack.pop() {
+        repaired.push(closing_char);
+    }
+
+    repaired
 }
 
 fn clean_json_output(raw: &str) -> String {

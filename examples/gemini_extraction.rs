@@ -52,8 +52,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     dotenv().ok();
     println!("🚀 Starting Gemini Financial History Builder Example...");
 
-    let schema = schemars::schema_for!(FinancialHistoryConfig);
-    let schema_json = serde_json::to_value(&schema)?;
+    // USE THE NEW HELPER FUNCTION HERE
+    let schema_json = FinancialHistoryConfig::get_gemini_response_schema()?;
 
     println!("📋 Generated JSON Schema for LLM structured output.");
 

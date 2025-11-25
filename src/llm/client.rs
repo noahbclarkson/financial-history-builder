@@ -26,6 +26,30 @@ impl GeminiClient {
         }
     }
 
+    /// Programmatically fetch model metadata (token limits, etc.)
+    pub async fn get_model_info(&self, model_name: &str) -> Result<ModelMetadata> {
+        let model_path = if model_name.starts_with("models/") {
+            model_name.to_string()
+        } else {
+            format!("models/{}", model_name)
+        };
+
+        let url = format!("{}/{}?key={}", self.base_url, model_path, self.api_key);
+
+        let res = self.client.get(&url).send().await?;
+
+        if !res.status().is_success() {
+            let err = res.text().await?;
+            return Err(FinancialHistoryError::ExtractionFailed(format!(
+                "Failed to fetch model info: {}",
+                err
+            )));
+        }
+
+        let metadata: ModelMetadata = res.json().await?;
+        Ok(metadata)
+    }
+
     /// Upload a file from a local path (CLI/Desktop use case)
     pub async fn upload_document(&self, path: &Path) -> Result<RemoteDocument> {
         let file_name = path
@@ -185,6 +209,7 @@ impl GeminiClient {
         messages: Vec<Content>,
         response_schema: Option<serde_json::Value>,
         response_mime_type: &str,
+        max_output_tokens: Option<u32>,
     ) -> Result<String> {
         let url = format!(
             "{}/models/{}:generateContent?key={}",
@@ -204,6 +229,7 @@ impl GeminiClient {
             generation_config: GenerationConfig {
                 response_mime_type: response_mime_type.to_string(),
                 response_schema,
+                max_output_tokens,
             },
         };
 

@@ -15,6 +15,14 @@ impl RemoteDocument {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelMetadata {
+    pub name: String,
+    pub display_name: Option<String>,
+    pub output_token_limit: u32,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Content {
     pub role: String,
@@ -89,10 +97,11 @@ pub(crate) struct GenerateContentRequest {
 pub(crate) struct GenerationConfig {
     pub response_mime_type: String,
 
-    // Explicitly rename to match the API documentation "responseJsonSchema"
-    #[serde(rename = "responseJsonSchema")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_schema: Option<serde_json::Value>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u32>,
 }
 
 #[derive(Deserialize)]
