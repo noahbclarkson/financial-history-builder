@@ -128,7 +128,7 @@ For EVERY snapshot, you MUST provide a `source` object:
 
 ```json
 "source": {
-  "document_name": "0",  // ← Use Document ID from manifest ("0", "1", etc.)
+  "document": "0",  // ← Use Document ID from manifest ("0", "1", etc.)
   "original_text": "Cash and cash equivalents"  // ← ONLY if row label differs from account name
 }
 ```
@@ -144,7 +144,7 @@ For EVERY snapshot, you MUST provide a `source` object:
 - If a value appears in multiple documents, use the MOST DETAILED source
 
 ### 6. Noise Factor Guidance
-Set `noise_factor` based on account stability:
+Set `noise` based on account stability:
 - `0.0`: Fixed assets, long-term debt (very stable)
 - `0.01-0.02`: Most balance sheet accounts (stable but not fixed)
 - `0.03-0.05`: High-variability accounts (inventory in volatile industries)
@@ -167,7 +167,7 @@ Set `noise_factor` based on account stability:
           "date": "2022-12-31",
           "value": 125000.00,
           "source": {
-            "document_name": "0",
+            "document": "0",
             "original_text": null
           }
         },
@@ -175,13 +175,13 @@ Set `noise_factor` based on account stability:
           "date": "2023-12-31",
           "value": 185000.00,
           "source": {
-            "document_name": "0",
+            "document": "0",
             "original_text": null
           }
         }
       ],
       "is_balancing_account": true,
-      "noise_factor": 0.02
+      "noise": 0.02
     }
   ]
 }
@@ -193,7 +193,7 @@ Before finalizing:
 ✓ All snapshot dates are valid (YYYY-MM-DD format, month-end dates)
 ✓ Every snapshot has a `source` object with valid document ID
 ✓ EXACTLY one account has `is_balancing_account: true`
-✓ All `document_name` values are IDs ("0", "1") not filenames
+✓ All `document` values are IDs ("0", "1") not filenames
 ✓ Opening balances handled correctly (no duplicate Jan 1 if Dec 31 exists)
 ✓ Interpolation methods are appropriate for each account type
 "#;
@@ -224,32 +224,32 @@ Extract period constraints for the SPECIFIC accounts listed in this request.
 ```json
 "constraints": [
   {
-    "start_date": "2023-01-01",
-    "end_date": "2023-03-31",
+    "start": "2023-01-01",
+    "end": "2023-03-31",
     "value": 300000.00,
-    "source": { "document_name": "0" }
+    "source": { "document": "0" }
   },
   {
-    "start_date": "2023-01-01",
-    "end_date": "2023-12-31",
+    "start": "2023-01-01",
+    "end": "2023-12-31",
     "value": 1200000.00,
-    "source": { "document_name": "0" }
+    "source": { "document": "0" }
   }
 ]
 ```
 
 ### 3. Date Range Rules
-**Start Date:**
+**Start:**
 - For a MONTH: Use first day (e.g., 2023-01-01 for January)
 - For a QUARTER: Use quarter start (Q1: Jan 1, Q2: Apr 1, Q3: Jul 1, Q4: Oct 1)
 - For a YEAR: Use fiscal year start (if FY ends Dec, start is Jan 1)
 
-**End Date:**
+**End:**
 - For a MONTH: Use last day (Jan 31, Feb 28/29, etc.)
 - For a QUARTER: Use quarter end (Q1: Mar 31, Q2: Jun 30, Q3: Sep 30, Q4: Dec 31)
 - For a YEAR: Use fiscal year end
 
-**Validation:** `start_date` MUST be ≤ `end_date`
+**Validation:** `start` MUST be ≤ `end`
 
 ### 4. Seasonality Profile Selection
 Choose the pattern that best represents the account's behavior:
@@ -278,7 +278,7 @@ For EVERY constraint, you MUST provide a `source` object:
 
 ```json
 "source": {
-  "document_name": "0",  // ← Use Document ID from manifest ("0", "1", etc.)
+  "document": "0",  // ← Use Document ID from manifest ("0", "1", etc.)
   "original_text": "Total operating revenue"  // ← ONLY if label differs from account name
 }
 ```
@@ -306,7 +306,7 @@ For EVERY constraint, you MUST provide a `source` object:
 - Cost of Sales / COGS (if shown as a category)
 
 ### 7. Noise Factor Guidance
-Set `noise_factor` based on account variability:
+Set `noise` based on account variability:
 - `0.0`: Fixed costs (rent, insurance, depreciation)
 - `0.03`: Moderate variability (salaries, utilities)
 - `0.05`: High variability (revenue, commission-based expenses)
@@ -324,28 +324,28 @@ Set `noise_factor` based on account variability:
     {
       "name": "Revenue",
       "account_type": "Revenue",
-      "seasonality_profile": "Flat",
+      "seasonality": "Flat",
       "constraints": [
         {
-          "start_date": "2023-01-01",
-          "end_date": "2023-12-31",
+          "start": "2023-01-01",
+          "end": "2023-12-31",
           "value": 1200000.00,
           "source": {
-            "document_name": "0",
+            "document": "0",
             "original_text": null
           }
         },
         {
-          "start_date": "2022-01-01",
-          "end_date": "2022-12-31",
+          "start": "2022-01-01",
+          "end": "2022-12-31",
           "value": 950000.00,
           "source": {
-            "document_name": "0",
+            "document": "0",
             "original_text": null
           }
         }
       ],
-      "noise_factor": 0.05
+      "noise": 0.05
     }
   ]
 }
@@ -355,10 +355,10 @@ Set `noise_factor` based on account variability:
 Before finalizing:
 ✓ Every account matches the provided list EXACTLY
 ✓ All dates are in YYYY-MM-DD format
-✓ All start_date ≤ end_date for every constraint
+✓ All start ≤ end for every constraint
 ✓ Overlapping periods are included (monthly + quarterly + annual)
 ✓ Every constraint has a `source` object with valid document ID
-✓ All `document_name` values are IDs ("0", "1") not filenames
+✓ All `document` values are IDs ("0", "1") not filenames
 ✓ Seasonality profiles are appropriate for each account
 ✓ No calculated totals (Gross Profit, Net Income) in the output
 "#;
@@ -381,7 +381,7 @@ Review the extracted financial configuration and generate a JSON Patch (RFC 6902
 If validation errors are present, you MUST fix them:
 - Missing required fields
 - Invalid data types
-- Constraint violations (e.g., start_date > end_date)
+- Constraint violations (e.g., start > end)
 - Missing source metadata
 - Accounting equation violations
 
@@ -413,7 +413,7 @@ For **Income Statement accounts**:
 ### 5. Source Metadata Completeness
 - ✓ Does EVERY snapshot have a `source` object?
 - ✓ Does EVERY constraint have a `source` object?
-- ✓ Are all `document_name` fields using IDs ("0", "1") not filenames?
+- ✓ Are all `document` fields using IDs ("0", "1") not filenames?
 - ✓ Is `original_text` filled in when the label differs from account name?
 
 ### 6. Number Validation
@@ -517,7 +517,7 @@ If a field were named "amount~total":
 {
   "op": "add",
   "path": "/balance_sheet/0/snapshots/1/source",
-  "value": { "document_name": "0", "original_text": null }
+  "value": { "document": "0", "original_text": null }
 }
 ```
 
@@ -535,7 +535,7 @@ If a field were named "amount~total":
   "value": {
     "date": "2022-12-31",
     "value": 125000.00,
-    "source": { "document_name": "0", "original_text": null }
+    "source": { "document": "0", "original_text": null }
   }
 }
 ```
@@ -558,7 +558,7 @@ Return a JSON array of patch operations:
 [
   { "op": "replace", "path": "/balance_sheet/0/is_balancing_account", "value": true },
   { "op": "add", "path": "/balance_sheet/2/snapshots/-", "value": {...} },
-  { "op": "replace", "path": "/income_statement/1/seasonality_profile", "value": "Flat" }
+  { "op": "replace", "path": "/income_statement/1/seasonality", "value": "Flat" }
 ]
 ```
 

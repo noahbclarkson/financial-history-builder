@@ -130,7 +130,7 @@ impl FinancialExtractor {
             Use the EXACT names below. Do not modify or rename them.\n\n- {}\n\n\
             ## CRITICAL REMINDERS\n\
             - Set EXACTLY ONE account as `is_balancing_account: true` (prefer Cash)\n\
-            - Use document IDs (\"0\", \"1\", etc.) in `source.document_name`\n\
+            - Use document IDs (\"0\", \"1\", etc.) in `source.document`\n\
             - Extract ALL available dates (2023, 2022, mid-year if present)\n\
             - Choose appropriate interpolation: Linear, Step, or Curve\n\n\
             Return valid JSON matching the BalanceSheetExtractionResponse schema.",
@@ -169,7 +169,7 @@ impl FinancialExtractor {
             Use the EXACT names below. Do not modify or rename them.\n\n- {}\n\n\
             ## CRITICAL REMINDERS\n\
             - Extract ALL available periods (annual, quarterly, monthly if present)\n\
-            - Use document IDs (\"0\", \"1\", etc.) in `source.document_name`\n\
+            - Use document IDs (\"0\", \"1\", etc.) in `source.document`\n\
             - Choose appropriate seasonality: Flat (most common), RetailPeak, SummerHigh, or SaasGrowth\n\
             - Do NOT extract calculated totals (Gross Profit, Net Income, EBITDA)\n\
             - Include overlapping periods (e.g., both monthly AND annual totals)\n\n\
@@ -691,11 +691,11 @@ fn create_document_manifest(documents: &[RemoteDocument]) -> (String, HashMap<St
         "\n═══════════════════════════════════════════════════════════════════\n\
          ⚠️  CRITICAL INSTRUCTION ⚠️\n\
          ═══════════════════════════════════════════════════════════════════\n\
-         In ALL `source.document_name` fields, use ONLY the Document ID number.\n\n\
-         ✅ CORRECT:   \"document_name\": \"0\"\n\
-         ✅ CORRECT:   \"document_name\": \"1\"\n\
-         ❌ WRONG:     \"document_name\": \"2023_Annual_Report.pdf\"\n\
-         ❌ WRONG:     \"document_name\": \"Financial Statements.pdf\"\n\n\
+         In ALL `source.document` fields, use ONLY the Document ID number.\n\n\
+         ✅ CORRECT:   \"document\": \"0\"\n\
+         ✅ CORRECT:   \"document\": \"1\"\n\
+         ❌ WRONG:     \"document\": \"2023_Annual_Report.pdf\"\n\
+         ❌ WRONG:     \"document\": \"Financial Statements.pdf\"\n\n\
          Do NOT use filenames. Use ONLY the numeric ID from the manifest above.\n\
          ═══════════════════════════════════════════════════════════════════\n\n",
     );

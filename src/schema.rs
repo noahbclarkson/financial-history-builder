@@ -7,6 +7,7 @@ pub struct SourceMetadata {
     #[schemars(
         description = "The Document ID from the manifest (e.g., \"0\", \"1\", \"2\"). Use ONLY the numeric ID, not the filename."
     )]
+    #[serde(rename = "document")]
     pub document_name: String,
 
     #[schemars(
@@ -150,6 +151,7 @@ pub struct BalanceSheetAccount {
     #[schemars(
         description = "Optional variance to add realistic noise. Range: 0.0 (no noise) to 0.1 (10% random variation). Defaults to 0.0. Use 0.0 for fixed items. Use 0.01-0.02 for stable balance sheet accounts."
     )]
+    #[serde(rename = "noise")]
     pub noise_factor: f64,
 }
 
@@ -158,11 +160,13 @@ pub struct PeriodConstraint {
     #[schemars(
         description = "Start of the period (inclusive). MUST be before or equal to end_date. For a month, use the first day (e.g., 2023-01-01). For a quarter, use the first day of the quarter. For a year, use the fiscal year start."
     )]
+    #[serde(rename = "start")]
     pub start_date: NaiveDate,
 
     #[schemars(
         description = "End of the period (inclusive). MUST be after or equal to start_date. For a month, use the last day (e.g., 2023-01-31). For a quarter, use the quarter end. For a year, use the fiscal year end."
     )]
+    #[serde(rename = "end")]
     pub end_date: NaiveDate,
 
     #[schemars(
@@ -190,6 +194,7 @@ pub struct IncomeStatementAccount {
     #[schemars(
         description = "Defines the shape of the data when filling in gaps between constraints. This determines how the engine distributes values across months."
     )]
+    #[serde(rename = "seasonality")]
     pub seasonality_profile: SeasonalityProfileId,
 
     #[schemars(
@@ -201,6 +206,7 @@ pub struct IncomeStatementAccount {
     #[schemars(
         description = "Optional variance to add realistic noise. Range: 0.0 (no noise) to 0.1 (10% random variation). Defaults to 0.0. Use 0.0 for fixed costs. Use 0.03-0.05 for normal revenues/expenses."
     )]
+    #[serde(rename = "noise")]
     pub noise_factor: f64,
 }
 
