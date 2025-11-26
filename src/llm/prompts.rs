@@ -522,8 +522,21 @@ Our system extracts the name and resolves the index automatically.
 
 ### Path Rules:
 1. **Use Account Name**: `/balance_sheet/Cash at Bank/noise`
-2. **Escaping**: If the name contains a forward slash `/`, escape it as `~1`. If it contains `~`, escape as `~0`.
+2. **Escaping Rules (ONLY 2 CHARACTERS NEED ESCAPING)**:
+   - If the name contains `~` → Escape as `~0`
+   - If the name contains `/` → Escape as `~1`
+   - **ALL OTHER CHARACTERS USE AS-IS** (including: `#`, `@`, `$`, `%`, `&`, `*`, spaces, etc.)
 3. **Sub-Arrays**: For `snapshots` or `constraints`, you MUST still use numeric indices or `-` (to append).
+
+### Escaping Examples:
+✅ CORRECT: Account "BNZ Advantage Visa Platinu#001" → `/balance_sheet/BNZ Advantage Visa Platinu#001/noise`
+❌ WRONG:   Account "BNZ Advantage Visa Platinu#001" → `/balance_sheet/BNZ Advantage Visa Platinu~0001/noise`
+
+✅ CORRECT: Account "R&D Expenses" → `/income_statement/R&D Expenses/seasonality`
+❌ WRONG:   Account "R&D Expenses" → `/income_statement/R~26D Expenses/seasonality`
+
+✅ CORRECT: Account "Equity/Retained Earnings" → `/balance_sheet/Equity~1Retained Earnings/noise`
+✅ CORRECT: Account "Account~Special" → `/balance_sheet/Account~0Special/noise`
 
 ### Common Path Patterns:
 

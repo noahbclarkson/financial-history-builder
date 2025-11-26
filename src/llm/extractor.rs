@@ -560,6 +560,8 @@ impl FinancialExtractor {
                 continue;
             }
 
+            // Unescape JSON Pointer: ~1 → /, ~0 → ~
+            // IMPORTANT: Must unescape ~1 BEFORE ~0 to avoid double-unescaping
             let account_name = identifier.replace("~1", "/").replace("~0", "~");
 
             let resolved_index = match section {
@@ -593,7 +595,45 @@ impl FinancialExtractor {
                     PatchOperation::Test(test_op) => test_op.path = new_path_parsed,
                 }
             } else {
-                eprintln!("⚠️ Patch Warning: Could not find account named '{}' in {}", account_name, section);
+                // Account not found - try fuzzy match to provide helpful error
+                eprintln!("⚠️ Patch Error: Account '{}' not found in {}", account_name, section);
+                eprintln!("   Original path: {}", identifier);
+
+                // Try to find similar account names
+                let similar: Vec<String> = match section {
+                    "balance_sheet" => config
+                        .balance_sheet
+                        .iter()
+                        .filter(|a| {
+                            let name_lower = a.name.to_lowercase();
+                            let search_lower = account_name.to_lowercase();
+                            name_lower.contains(&search_lower) || search_lower.contains(&name_lower)
+                        })
+                        .map(|a| a.name.clone())
+                        .take(3)
+                        .collect(),
+                    "income_statement" => config
+                        .income_statement
+                        .iter()
+                        .filter(|a| {
+                            let name_lower = a.name.to_lowercase();
+                            let search_lower = account_name.to_lowercase();
+                            name_lower.contains(&search_lower) || search_lower.contains(&name_lower)
+                        })
+                        .map(|a| a.name.clone())
+                        .take(3)
+                        .collect(),
+                    _ => vec![],
+                };
+
+                if !similar.is_empty() {
+                    eprintln!("   Similar accounts found:");
+                    for name in similar {
+                        eprintln!("     - \"{}\"", name);
+                    }
+                    eprintln!("   Hint: Use the EXACT account name. Only escape ~ as ~0 and / as ~1.");
+                    eprintln!("         Characters like #, @, $, %, &, * do NOT need escaping.");
+                }
             }
         }
         Ok(())
@@ -619,40 +659,56 @@ impl FinancialExtractor {
         }
 
         // Parse as PatchOperation array
-        let mut patch: Vec<json_patch::PatchOperation> =
+        let patch_ops: Vec<json_patch::PatchOperation> =
             serde_json::from_value(patch_value).map_err(|e| {
                 FinancialHistoryError::ExtractionFailed(format!("Invalid JSON patch format: {}", e))
             })?;
 
-        // Resolve account names to indices before applying
-        Self::resolve_patch_paths(config, &mut patch)?;
+        let total_ops = patch_ops.len();
+        eprintln!("📝 Applying {} patch operation(s)...", total_ops);
 
-        // Convert config to JSON value
-        let mut config_value =
-            serde_json::to_value(&config).map_err(FinancialHistoryError::SerializationError)?;
+        // Apply each operation sequentially, re-resolving paths after each one
+        // This prevents index invalidation when earlier ops remove/add accounts
+        for (i, single_op) in patch_ops.into_iter().enumerate() {
+            // Resolve account names to indices for this specific operation
+            let mut ops_to_resolve = vec![single_op];
+            Self::resolve_patch_paths(config, &mut ops_to_resolve)?;
 
-        // Apply the patch
-        json_patch::patch(&mut config_value, &patch).map_err(|e| {
-            // Log the failed patch for debugging
-            let _ = fs::write(
-                format!("debug_failed_patch_attempt_{}.json", attempt),
-                patch_json,
-            );
+            // Convert config to JSON value
+            let mut config_value =
+                serde_json::to_value(&config).map_err(FinancialHistoryError::SerializationError)?;
 
-            FinancialHistoryError::ExtractionFailed(format!(
-                "Failed to apply JSON patch: {}. Patch dumped to debug_failed_patch_attempt_{}.json",
-                e, attempt
-            ))
-        })?;
+            // Apply this single operation
+            if let Err(e) = json_patch::patch(&mut config_value, &ops_to_resolve) {
+                eprintln!("⚠️ Operation {} failed: {}", i + 1, e);
 
-        // Convert back to FinancialHistoryConfig
-        let new_config: FinancialHistoryConfig =
-            serde_json::from_value(config_value).map_err(|e| {
-                FinancialHistoryError::ExtractionFailed(format!(
-                    "Patched JSON doesn't match schema: {}",
-                    e
-                ))
-            })?;
+                // Log the failed operation
+                let failed_op_json = serde_json::to_string_pretty(&ops_to_resolve)
+                    .unwrap_or_else(|_| format!("{:?}", ops_to_resolve));
+                let _ = fs::write(
+                    format!("debug_failed_patch_op_{}_attempt_{}.json", i + 1, attempt),
+                    &failed_op_json,
+                );
+
+                return Err(FinancialHistoryError::ExtractionFailed(format!(
+                    "Failed to apply JSON patch operation {}/{}: {}. Operation dumped to debug file.",
+                    i + 1, total_ops, e
+                )));
+            }
+
+            // Convert back to FinancialHistoryConfig
+            let new_config: FinancialHistoryConfig =
+                serde_json::from_value(config_value).map_err(|e| {
+                    FinancialHistoryError::ExtractionFailed(format!(
+                        "Patched JSON doesn't match schema after operation {}: {}",
+                        i + 1, e
+                    ))
+                })?;
+
+            // Update config for next iteration
+            *config = new_config;
+            eprintln!("  ✓ Operation {} applied successfully", i + 1);
+        }
 
         // Log the successful patch
         let _ = fs::write(
@@ -660,7 +716,7 @@ impl FinancialExtractor {
             patch_json,
         );
 
-        *config = new_config;
+        eprintln!("✅ All patch operations applied successfully");
         Ok(true)
     }
 
