@@ -532,6 +532,77 @@ impl FinancialExtractor {
         Ok(extract_first_json_array(&response))
     }
 
+    fn resolve_patch_paths(
+        config: &FinancialHistoryConfig,
+        patch_ops: &mut [json_patch::PatchOperation],
+    ) -> Result<()> {
+        use json_patch::PatchOperation;
+
+        for op in patch_ops {
+            let path_str = match op {
+                PatchOperation::Add(add_op) => add_op.path.to_string(),
+                PatchOperation::Remove(remove_op) => remove_op.path.to_string(),
+                PatchOperation::Replace(replace_op) => replace_op.path.to_string(),
+                PatchOperation::Move(move_op) => move_op.path.to_string(),
+                PatchOperation::Copy(copy_op) => copy_op.path.to_string(),
+                PatchOperation::Test(test_op) => test_op.path.to_string(),
+            };
+
+            if !path_str.starts_with('/') {
+                continue;
+            }
+
+            let parts: Vec<&str> = path_str.split('/').collect();
+            if parts.len() < 3 {
+                continue;
+            }
+
+            let section = parts[1];
+            let identifier = parts[2];
+
+            if identifier.parse::<usize>().is_ok() || identifier == "-" {
+                continue;
+            }
+
+            let account_name = identifier.replace("~1", "/").replace("~0", "~");
+
+            let resolved_index = match section {
+                "balance_sheet" => config
+                    .balance_sheet
+                    .iter()
+                    .position(|a| a.name == account_name),
+                "income_statement" => config
+                    .income_statement
+                    .iter()
+                    .position(|a| a.name == account_name),
+                _ => None,
+            };
+
+            if let Some(idx) = resolved_index {
+                let mut new_parts = parts.clone();
+                let idx_str = idx.to_string();
+                new_parts[2] = &idx_str;
+
+                let new_path = new_parts.join("/");
+                let new_path_parsed = new_path.parse().map_err(|e| {
+                    FinancialHistoryError::ExtractionFailed(format!("Failed to rewrite patch path: {}", e))
+                })?;
+
+                match op {
+                    PatchOperation::Add(add_op) => add_op.path = new_path_parsed,
+                    PatchOperation::Remove(remove_op) => remove_op.path = new_path_parsed,
+                    PatchOperation::Replace(replace_op) => replace_op.path = new_path_parsed,
+                    PatchOperation::Move(move_op) => move_op.path = new_path_parsed,
+                    PatchOperation::Copy(copy_op) => copy_op.path = new_path_parsed,
+                    PatchOperation::Test(test_op) => test_op.path = new_path_parsed,
+                }
+            } else {
+                eprintln!("⚠️ Patch Warning: Could not find account named '{}' in {}", account_name, section);
+            }
+        }
+        Ok(())
+    }
+
     fn apply_patch(
         &self,
         config: &mut FinancialHistoryConfig,
@@ -552,10 +623,13 @@ impl FinancialExtractor {
         }
 
         // Parse as PatchOperation array
-        let patch: Vec<json_patch::PatchOperation> =
+        let mut patch: Vec<json_patch::PatchOperation> =
             serde_json::from_value(patch_value).map_err(|e| {
                 FinancialHistoryError::ExtractionFailed(format!("Invalid JSON patch format: {}", e))
             })?;
+
+        // Resolve account names to indices before applying
+        Self::resolve_patch_paths(config, &mut patch)?;
 
         // Convert config to JSON value
         let mut config_value =
@@ -753,8 +827,8 @@ fn distribute_into_batches(items: &[String], max_per_batch: usize) -> Vec<Vec<St
     }
 
     let total = items.len();
-    let num_batches = (total + max_per_batch - 1) / max_per_batch;
-    let batch_size = (total + num_batches - 1) / num_batches;
+    let num_batches = total.div_ceil(max_per_batch);
+    let batch_size = total.div_ceil(num_batches);
 
     items
         .chunks(batch_size)

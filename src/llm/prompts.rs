@@ -511,37 +511,60 @@ If a field were named "amount~total":
 }
 ```
 
-**Important:** You typically work with ARRAY INDICES, not account names in paths:
-- ✅ CORRECT: `/balance_sheet/0/snapshots/1/value`
-- ❌ WRONG: `/balance_sheet/Cash at Bank/snapshots/1/value`
+## CRITICAL: JSON PATH CONSTRUCTION
+
+Standard JSON Patch uses numeric indices (e.g., `/balance_sheet/0/name`).
+However, calculating indices is error-prone.
+
+**YOU MUST USE ACCOUNT NAMES IN PATHS.**
+
+Our system extracts the name and resolves the index automatically.
+
+### Path Rules:
+1. **Use Account Name**: `/balance_sheet/Cash at Bank/noise`
+2. **Escaping**: If the name contains a forward slash `/`, escape it as `~1`. If it contains `~`, escape as `~0`.
+3. **Sub-Arrays**: For `snapshots` or `constraints`, you MUST still use numeric indices or `-` (to append).
 
 ### Common Path Patterns:
 
-**Replace a snapshot value:**
+**1. Fix a field on an account:**
+✅ CORRECT: `{ "op": "replace", "path": "/balance_sheet/Cash at Bank/is_balancing_account", "value": true }`
+❌ WRONG:   `{ "op": "replace", "path": "/balance_sheet/0/is_balancing_account", "value": true }`
+
+**2. Add a missing snapshot (Append):**
+✅ CORRECT: `{ "op": "add", "path": "/balance_sheet/Inventory/snapshots/-", "value": {...} }`
+
+**3. Fix a constraint value:**
+✅ CORRECT: `{ "op": "replace", "path": "/income_statement/Sales Revenue/constraints/0/value", "value": 500.0 }`
+
+**4. Handling Slash in Name ("R&D/Eng"):**
+✅ CORRECT: `{ "op": "add", "path": "/income_statement/R&D~1Eng/seasonality", "value": "Flat" }`
+
+**5. Replace a snapshot value:**
 ```json
-{ "op": "replace", "path": "/balance_sheet/0/snapshots/1/value", "value": 185000.00 }
+{ "op": "replace", "path": "/balance_sheet/Cash at Bank/snapshots/1/value", "value": 185000.00 }
 ```
 
-**Add a missing source:**
+**6. Add a missing source:**
 ```json
 {
   "op": "add",
-  "path": "/balance_sheet/0/snapshots/1/source",
+  "path": "/balance_sheet/Accounts Receivable/snapshots/1/source",
   "value": { "document": "0", "text": null }
 }
 ```
 
-**Fix balancing account (only one should be true):**
+**7. Fix balancing account (only one should be true):**
 ```json
-{ "op": "replace", "path": "/balance_sheet/0/is_balancing_account", "value": true }
-{ "op": "replace", "path": "/balance_sheet/1/is_balancing_account", "value": false }
+{ "op": "replace", "path": "/balance_sheet/Cash at Bank/is_balancing_account", "value": true }
+{ "op": "replace", "path": "/balance_sheet/Retained Earnings/is_balancing_account", "value": false }
 ```
 
-**Add a missing snapshot:**
+**8. Add a missing snapshot:**
 ```json
 {
   "op": "add",
-  "path": "/balance_sheet/0/snapshots/-",
+  "path": "/balance_sheet/Cash at Bank/snapshots/-",
   "value": {
     "date": "2022-12-31",
     "value": 125000.00,
@@ -550,14 +573,14 @@ If a field were named "amount~total":
 }
 ```
 
-**Fix account type:**
+**9. Fix account type:**
 ```json
-{ "op": "replace", "path": "/income_statement/2/account_type", "value": "OperatingExpense" }
+{ "op": "replace", "path": "/income_statement/Marketing/account_type", "value": "OperatingExpense" }
 ```
 
-**Remove duplicate account:**
+**10. Remove duplicate account:**
 ```json
-{ "op": "remove", "path": "/balance_sheet/5" }
+{ "op": "remove", "path": "/balance_sheet/Cash - Duplicate" }
 ```
 
 ## OUTPUT FORMAT
