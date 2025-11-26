@@ -39,9 +39,11 @@ impl Densifier {
         let mut snapshots = account.snapshots.clone();
         snapshots.sort_by_key(|s| s.date);
 
+        // CatmullRom needs outer "ghost" points; financial snapshots typically don't have them,
+        // leading to zeros at the ends. Cosine uses only the two bounding points for a smooth fit.
         let interpolation = match account.method {
             InterpolationMethod::Step => Interpolation::Step(0.0),
-            InterpolationMethod::Curve => Interpolation::CatmullRom,
+            InterpolationMethod::Curve => Interpolation::Cosine,
             InterpolationMethod::Linear => Interpolation::Linear,
         };
 
