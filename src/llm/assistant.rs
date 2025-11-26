@@ -52,7 +52,6 @@ impl DocumentAssistant {
                 messages,
                 None,
                 "text/plain",
-                None,
                 "document_assistant",
             )
             .await?;

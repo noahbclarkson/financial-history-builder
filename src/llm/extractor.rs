@@ -137,7 +137,6 @@ impl FinancialExtractor {
             .enumerate()
             .map(|(i, batch)| {
                 let batch_index = i + 1;
-                let total_batches = total_batches;
                 let batch_accounts = batch.clone();
                 let manifest = manifest.to_string();
                 let org_ctx = org_ctx.to_string();
@@ -219,7 +218,6 @@ impl FinancialExtractor {
             .enumerate()
             .map(|(i, batch)| {
                 let batch_index = i + 1;
-                let total_batches = total_batches;
                 let batch_accounts = batch.clone();
                 let manifest = manifest.to_string();
                 let org_ctx = org_ctx.to_string();
@@ -301,7 +299,6 @@ impl FinancialExtractor {
                     messages.clone(),
                     schema.clone(),
                     "application/json",
-                    Some(65536),
                     stage_name,
                 )
                 .await
@@ -524,7 +521,6 @@ impl FinancialExtractor {
                 messages,
                 None,
                 "application/json",
-                Some(65536),
                 &format!("validation_patch_attempt_{}", attempt),
             )
             .await?;

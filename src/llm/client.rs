@@ -209,7 +209,6 @@ impl GeminiClient {
         messages: Vec<Content>,
         response_schema: Option<serde_json::Value>,
         response_mime_type: &str,
-        max_output_tokens: Option<u32>,
         debug_label: &str,
     ) -> Result<String> {
         let url = format!(
@@ -230,7 +229,7 @@ impl GeminiClient {
             generation_config: GenerationConfig {
                 response_mime_type: response_mime_type.to_string(),
                 response_schema,
-                max_output_tokens,
+                max_output_tokens: Some(65536),
             },
         };
 
