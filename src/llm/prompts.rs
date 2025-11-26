@@ -222,12 +222,20 @@ Extract period constraints for the SPECIFIC accounts listed in this request.
 2. If you see a value for an account NOT in this batch list, **IGNORE IT COMPLETELY**. Do not guess or map to a similar name.
 3. If an account in the list has no data in the documents, omit it from the output for this batch.
 
-### 2. Period Constraint Strategy
+### 2. Period Constraint Strategy (CRITICAL DATE LOGIC)
 **Key Concept:** Extract ALL overlapping periods. The engine will solve them hierarchically.
 
 **Format:** Use the `period` string field.
 - **Single Month:** "YYYY-MM" (e.g., "2023-01")
 - **Range:** "YYYY-MM:YYYY-MM" (e.g., "2023-01:2023-12")
+
+**⛔ DATE RULES - DO NOT VIOLATE:**
+1. **RANGES ARE INCLUSIVE:** "2023-01:2023-03" means January, February, AND March.
+2. **SINGLE MONTHS:** If the value is for **March only**, output `"2023-03"`.
+   - ❌ WRONG: "2023-03:2023-04" (This implies March AND April combined)
+   - ❌ WRONG: "2023-03:2023-03" (Valid, but redundant. Use "2023-03")
+   - ✅ CORRECT: "2023-03"
+3. **NEVER CROSS-MONTH:** Do not create a range like "2023-03:2023-04" unless the document explicitly says "Revenue for March and April combined".
 
 **Extract:**
 - ✅ Annual totals: "2023-01:2023-12"
@@ -235,17 +243,17 @@ Extract period constraints for the SPECIFIC accounts listed in this request.
 - ✅ Monthly totals: "2023-01"
 - ✅ Year-to-date totals: "2023-01:2023-06"
 
-**Example:** If you see "Q1 Revenue: $300K" AND "2023 Revenue: $1.2M", extract BOTH:
+**Example:** If you see "Q1 Revenue: $300K" AND "March Revenue: $100K", extract BOTH:
 ```json
 "constraints": [
   {
-    "period": "2023-01:2023-03",
+    "period": "2023-01:2023-03", // Q1
     "value": 300000.00,
     "source": { "document": "0" }
   },
   {
-    "period": "2023-01:2023-12",
-    "value": 1200000.00,
+    "period": "2023-03", // Just March. NOT 2023-03:2023-04!
+    "value": 100000.00,
     "source": { "document": "0" }
   }
 ]
@@ -341,11 +349,11 @@ Set `noise` based on account variability:
           }
         },
         {
-          "period": "2022-01:2022-12",
-          "value": 950000.00,
+          "period": "2023-03",
+          "value": 95000.00,
           "source": {
             "document": "0",
-            "text": null
+            "text": "March Revenue"
           }
         }
       ],
@@ -358,7 +366,7 @@ Set `noise` based on account variability:
 ## QUALITY CHECKLIST
 Before finalizing:
 ✓ Every account matches the provided list EXACTLY
-✓ All periods use the correct format ("YYYY-MM" or "YYYY-MM:YYYY-MM")
+✓ **Periods are strictly inclusive**. Single months are "YYYY-MM", not "YYYY-MM:YYYY-M(M+1)".
 ✓ Overlapping periods are included (monthly + quarterly + annual)
 ✓ Every constraint has a `source` object with valid document ID
 ✓ All `document` values are IDs ("0", "1") not filenames
