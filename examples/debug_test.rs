@@ -1,6 +1,17 @@
 use chrono::NaiveDate;
 use financial_history_builder::*;
 
+fn period_range(start_year: i32, start_month: u32, end_year: i32, end_month: u32) -> String {
+    if start_year == end_year && start_month == end_month {
+        format!("{:04}-{:02}", start_year, start_month)
+    } else {
+        format!(
+            "{:04}-{:02}:{:04}-{:02}",
+            start_year, start_month, end_year, end_month
+        )
+    }
+}
+
 fn main() {
     let config = FinancialHistoryConfig {
         organization_name: "Debug".to_string(),
@@ -30,20 +41,17 @@ fn main() {
             seasonality_profile: SeasonalityProfileId::Flat,
             constraints: vec![
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
+                    period: period_range(2023, 1, 2023, 1),
                     value: 10_000.0,
                     source: None,
                 },
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 2, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
+                    period: period_range(2023, 2, 2023, 2),
                     value: 0.0,
                     source: None,
                 },
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 3, 31).unwrap(),
+                    period: period_range(2023, 1, 2023, 3),
                     value: 25_000.0,
                     source: None,
                 },

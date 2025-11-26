@@ -81,6 +81,11 @@ Extract precise balance sheet snapshots for the SPECIFIC accounts listed in this
 - Do NOT rename, abbreviate, or modify account names
 - If an account name from the list doesn't appear in the documents, OMIT it entirely
 
+## ⛔ BATCH PROCESSING RULES (STRICT)
+1. **ONLY** extract data for the exact account names listed in the current batch under "EXTRACT SNAPSHOTS FOR THESE ACCOUNTS".
+2. If you see data for an account NOT in this batch list, **IGNORE IT COMPLETELY**. Do not guess or map to a similar name.
+3. If an account in the list has no data, omit it from the output for this batch.
+
 ### 2. Snapshot Extraction Strategy
 For EACH account, extract ALL available dates as snapshots:
 
@@ -129,14 +134,14 @@ For EVERY snapshot, you MUST provide a `source` object:
 ```json
 "source": {
   "document": "0",  // ← Use Document ID from manifest ("0", "1", etc.)
-  "original_text": "Cash and cash equivalents"  // ← ONLY if row label differs from account name
+  "text": "Cash and cash equivalents"  // ← ONLY if row label differs from account name
 }
 ```
 
-**When to include `original_text`:**
+**When to include `text`:**
 - Row says "Cash and cash equivalents" but account name is "Cash" → Include it
 - Row says "Accounts receivable - trade" but account name is "Accounts Receivable" → Include it
-- Row says EXACTLY the account name → Omit `original_text` (set to null or omit field)
+- Row says EXACTLY the account name → Omit `text` (set to null or omit field)
 
 **Document ID Rules:**
 - Use ONLY the numeric ID from the manifest ("0", "1", "2")
@@ -168,7 +173,7 @@ Set `noise` based on account stability:
           "value": 125000.00,
           "source": {
             "document": "0",
-            "original_text": null
+            "text": null
           }
         },
         {
@@ -176,7 +181,7 @@ Set `noise` based on account stability:
           "value": 185000.00,
           "source": {
             "document": "0",
-            "original_text": null
+            "text": null
           }
         }
       ],
@@ -194,6 +199,7 @@ Before finalizing:
 ✓ Every snapshot has a `source` object with valid document ID
 ✓ EXACTLY one account has `is_balancing_account: true`
 ✓ All `document` values are IDs ("0", "1") not filenames
+✓ `text` filled when the row label differs from the account name
 ✓ Opening balances handled correctly (no duplicate Jan 1 if Dec 31 exists)
 ✓ Interpolation methods are appropriate for each account type
 "#;
@@ -211,45 +217,45 @@ Extract period constraints for the SPECIFIC accounts listed in this request.
 - Do NOT rename, abbreviate, or modify account names
 - If an account name from the list doesn't appear in the documents, OMIT it entirely
 
+## ⛔ BATCH PROCESSING RULES (STRICT)
+1. **ONLY** extract data for the exact account names listed in the current batch under "EXTRACT CONSTRAINTS FOR THESE ACCOUNTS".
+2. If you see a value for an account NOT in this batch list, **IGNORE IT COMPLETELY**. Do not guess or map to a similar name.
+3. If an account in the list has no data in the documents, omit it from the output for this batch.
+
 ### 2. Period Constraint Strategy
 **Key Concept:** Extract ALL overlapping periods. The engine will solve them hierarchically.
 
+**Format:** Use the `period` string field.
+- **Single Month:** "YYYY-MM" (e.g., "2023-01")
+- **Range:** "YYYY-MM:YYYY-MM" (e.g., "2023-01:2023-12")
+
 **Extract:**
-- ✅ Annual totals (e.g., Jan 1 - Dec 31, 2023)
-- ✅ Quarterly totals (e.g., Jan 1 - Mar 31, Q1 2023)
-- ✅ Monthly totals (e.g., Jan 1 - Jan 31, 2023)
-- ✅ Year-to-date totals (e.g., Jan 1 - Jun 30, 2023)
+- ✅ Annual totals: "2023-01:2023-12"
+- ✅ Quarterly totals: "2023-01:2023-03" (Q1)
+- ✅ Monthly totals: "2023-01"
+- ✅ Year-to-date totals: "2023-01:2023-06"
 
 **Example:** If you see "Q1 Revenue: $300K" AND "2023 Revenue: $1.2M", extract BOTH:
 ```json
 "constraints": [
   {
-    "start": "2023-01-01",
-    "end": "2023-03-31",
+    "period": "2023-01:2023-03",
     "value": 300000.00,
     "source": { "document": "0" }
   },
   {
-    "start": "2023-01-01",
-    "end": "2023-12-31",
+    "period": "2023-01:2023-12",
     "value": 1200000.00,
     "source": { "document": "0" }
   }
 ]
 ```
 
-### 3. Date Range Rules
-**Start:**
-- For a MONTH: Use first day (e.g., 2023-01-01 for January)
-- For a QUARTER: Use quarter start (Q1: Jan 1, Q2: Apr 1, Q3: Jul 1, Q4: Oct 1)
-- For a YEAR: Use fiscal year start (if FY ends Dec, start is Jan 1)
-
-**End:**
-- For a MONTH: Use last day (Jan 31, Feb 28/29, etc.)
-- For a QUARTER: Use quarter end (Q1: Mar 31, Q2: Jun 30, Q3: Sep 30, Q4: Dec 31)
-- For a YEAR: Use fiscal year end
-
-**Validation:** `start` MUST be ≤ `end`
+### 3. Date Logic
+- You do NOT need to calculate the last day of the month (28, 30, 31).
+- Just provide the Year-Month in the format "YYYY-MM".
+- If the document says "Year ended June 30, 2023", the period is "2022-07:2023-06".
+- If the document says "Year ended Dec 31, 2023", the period is "2023-01:2023-12".
 
 ### 4. Seasonality Profile Selection
 Choose the pattern that best represents the account's behavior:
@@ -279,14 +285,14 @@ For EVERY constraint, you MUST provide a `source` object:
 ```json
 "source": {
   "document": "0",  // ← Use Document ID from manifest ("0", "1", etc.)
-  "original_text": "Total operating revenue"  // ← ONLY if label differs from account name
+  "text": "Total operating revenue"  // ← ONLY if label differs from account name
 }
 ```
 
-**When to include `original_text`:**
+**When to include `text`:**
 - Document says "Sales of goods" but account is "Revenue" → Include it
 - Document says "Employee costs" but account is "Salaries" → Include it
-- Document label EXACTLY matches account name → Omit `original_text`
+- Document label EXACTLY matches account name → Omit `text`
 
 **Document ID Rules:**
 - Use ONLY the numeric ID from the manifest ("0", "1", "2")
@@ -327,21 +333,19 @@ Set `noise` based on account variability:
       "seasonality": "Flat",
       "constraints": [
         {
-          "start": "2023-01-01",
-          "end": "2023-12-31",
+          "period": "2023-01:2023-12",
           "value": 1200000.00,
           "source": {
             "document": "0",
-            "original_text": null
+            "text": null
           }
         },
         {
-          "start": "2022-01-01",
-          "end": "2022-12-31",
+          "period": "2022-01:2022-12",
           "value": 950000.00,
           "source": {
             "document": "0",
-            "original_text": null
+            "text": null
           }
         }
       ],
@@ -354,11 +358,11 @@ Set `noise` based on account variability:
 ## QUALITY CHECKLIST
 Before finalizing:
 ✓ Every account matches the provided list EXACTLY
-✓ All dates are in YYYY-MM-DD format
-✓ All start ≤ end for every constraint
+✓ All periods use the correct format ("YYYY-MM" or "YYYY-MM:YYYY-MM")
 ✓ Overlapping periods are included (monthly + quarterly + annual)
 ✓ Every constraint has a `source` object with valid document ID
 ✓ All `document` values are IDs ("0", "1") not filenames
+✓ `text` filled when the label differs from account name
 ✓ Seasonality profiles are appropriate for each account
 ✓ No calculated totals (Gross Profit, Net Income) in the output
 "#;
@@ -381,7 +385,7 @@ Review the extracted financial configuration and generate a JSON Patch (RFC 6902
 If validation errors are present, you MUST fix them:
 - Missing required fields
 - Invalid data types
-- Constraint violations (e.g., start > end)
+- Constraint violations (e.g., invalid period ranges)
 - Missing source metadata
 - Accounting equation violations
 
@@ -406,7 +410,7 @@ For **Balance Sheet accounts**:
 
 For **Income Statement accounts**:
 - ✓ Are all available periods extracted (annual, quarterly, monthly)?
-- ✓ Are constraint date ranges valid (start ≤ end)?
+- ✓ Are constraint periods valid (start month ≤ end month)?
 - ✓ Are seasonality profiles appropriate?
 - ✓ Are there any calculated totals that shouldn't be there?
 
@@ -414,7 +418,7 @@ For **Income Statement accounts**:
 - ✓ Does EVERY snapshot have a `source` object?
 - ✓ Does EVERY constraint have a `source` object?
 - ✓ Are all `document` fields using IDs ("0", "1") not filenames?
-- ✓ Is `original_text` filled in when the label differs from account name?
+- ✓ Is `text` filled in when the label differs from account name?
 
 ### 6. Number Validation
 - ✓ Are all values reasonable for their account types?
@@ -426,6 +430,12 @@ Review the visual tables:
 - ✓ Do the numbers look reasonable when viewed as a whole?
 - ✓ Are there any obvious gaps or anomalies?
 - ✓ Do trends make business sense?
+
+### 8. Cross-Batch Integrity (CRITICAL)
+Since data was extracted in batches, check for:
+- **Duplicate Value assignment**: The exact same monetary value appearing in two different accounts (possible double-counting). Flag this for correction.
+- **Similar Account Names**: Pairs like "Office Expenses" vs. "Office Supplies" with similar data. Suggest merge/remove via patch.
+- **Lost Accounts**: Compare against the discovery lists provided in context. If a discovered account is missing, add it back with a note.
 
 ## JSON PATCH OPERATIONS (RFC 6902)
 
@@ -517,7 +527,7 @@ If a field were named "amount~total":
 {
   "op": "add",
   "path": "/balance_sheet/0/snapshots/1/source",
-  "value": { "document": "0", "original_text": null }
+  "value": { "document": "0", "text": null }
 }
 ```
 
@@ -535,7 +545,7 @@ If a field were named "amount~total":
   "value": {
     "date": "2022-12-31",
     "value": 125000.00,
-    "source": { "document": "0", "original_text": null }
+    "source": { "document": "0", "text": null }
   }
 }
 ```

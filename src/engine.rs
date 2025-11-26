@@ -121,16 +121,21 @@ impl Densifier {
             return Ok(BTreeMap::new());
         }
 
-        let global_start = account
-            .constraints
+        // Resolve period strings into date ranges up front
+        let mut resolved_constraints = Vec::new();
+        for c in &account.constraints {
+            let (start, end) = c.resolve_dates()?;
+            resolved_constraints.push((start, end, c));
+        }
+
+        let global_start = resolved_constraints
             .iter()
-            .map(|c| c.start_date)
+            .map(|(s, _, _)| *s)
             .min()
             .unwrap();
-        let global_end = account
-            .constraints
+        let global_end = resolved_constraints
             .iter()
-            .map(|c| c.end_date)
+            .map(|(_, e, _)| *e)
             .max()
             .unwrap();
 
@@ -155,19 +160,17 @@ impl Densifier {
             );
         }
 
-        let mut constraints = account.constraints.clone();
-        constraints.sort_by_key(|c| (c.end_date - c.start_date).num_days());
+        resolved_constraints.sort_by_key(|(s, e, _)| (*e - *s).num_days());
 
         let mut rng = thread_rng();
         let noise = account.noise_factor;
 
-        for constraint in constraints {
-            let constraint_dates =
-                get_month_ends_in_period(constraint.start_date, constraint.end_date);
+        for (start_date, end_date, constraint) in resolved_constraints {
+            let constraint_dates = get_month_ends_in_period(start_date, end_date);
 
             // Identify single-month constraints explicitly
-            let is_single_month = constraint.start_date.year() == constraint.end_date.year()
-                && constraint.start_date.month() == constraint.end_date.month();
+            let is_single_month =
+                start_date.year() == end_date.year() && start_date.month() == end_date.month();
 
             let valid_dates: Vec<NaiveDate> = constraint_dates
                 .into_iter()
@@ -251,14 +254,13 @@ impl Densifier {
                         slot.original_period_info = None; // It's not derived, it IS the value
                     } else {
                         slot.origin = DataOrigin::Allocated;
-                        let days_diff = (constraint.end_date - constraint.start_date).num_days();
+                        let days_diff = (end_date - start_date).num_days();
                         let period_type = if days_diff > 360 { "Annual" } else { "Period" };
                         slot.derivation_logic = format!(
                             "Allocated portion of {} total (Seasonality: {:?})",
                             period_type, account.seasonality_profile
                         );
-                        slot.original_period_info =
-                            Some((constraint.value, constraint.start_date, constraint.end_date));
+                        slot.original_period_info = Some((constraint.value, start_date, end_date));
                     }
                 }
             }
@@ -337,20 +339,17 @@ mod tests {
             seasonality_profile: SeasonalityProfileId::Flat,
             constraints: vec![
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 2, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
+                    period: "2023-02".to_string(),
                     value: 5000.0,
                     source: None,
                 },
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 3, 31).unwrap(),
+                    period: "2023-01:2023-03".to_string(),
                     value: 13000.0,
                     source: None,
                 },
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    period: "2023-01:2023-12".to_string(),
                     value: 50000.0,
                     source: None,
                 },
@@ -474,8 +473,7 @@ mod tests {
                 account_type: AccountType::Revenue,
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    period: "2023-01:2023-12".to_string(),
                     value: 120000.0,
                     source: None,
                 }],

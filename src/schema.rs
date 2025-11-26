@@ -2,6 +2,9 @@ use chrono::NaiveDate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::error::Result as FHResult;
+use crate::utils::parse_period_string;
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SourceMetadata {
     #[schemars(
@@ -11,8 +14,9 @@ pub struct SourceMetadata {
     pub document_name: String,
 
     #[schemars(
-        description = "Optional context about where this value was found. ONLY required if: (1) the source row/line label differs from the account name, OR (2) the value was extracted from narrative text rather than a labeled table row. If the account name exactly matches the row label in a financial table, you may omit this field."
+        description = "Optional context about where this value was found. This is serialized as `text`. ONLY required if: (1) the source row/line label differs from the account name, OR (2) the value was extracted from narrative text rather than a labeled table row. If the account name exactly matches the row label in a financial table, you may omit this field."
     )]
+    #[serde(rename = "text")]
     pub original_text: Option<String>,
 }
 
@@ -158,16 +162,9 @@ pub struct BalanceSheetAccount {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PeriodConstraint {
     #[schemars(
-        description = "Start of the period (inclusive). MUST be before or equal to end_date. For a month, use the first day (e.g., 2023-01-01). For a quarter, use the first day of the quarter. For a year, use the fiscal year start."
+        description = "Time period string. Use 'YYYY-MM' for a single month (e.g., '2023-01') or 'YYYY-MM:YYYY-MM' for a range (e.g., '2023-01:2023-12'). The system automatically calculates the first and last days of the months."
     )]
-    #[serde(rename = "start")]
-    pub start_date: NaiveDate,
-
-    #[schemars(
-        description = "End of the period (inclusive). MUST be after or equal to start_date. For a month, use the last day (e.g., 2023-01-31). For a quarter, use the quarter end. For a year, use the fiscal year end."
-    )]
-    #[serde(rename = "end")]
-    pub end_date: NaiveDate,
+    pub period: String,
 
     #[schemars(
         description = "Total value generated during this specific period. If the document lists 'Gross Profit' or 'Net Income', DO NOT extract them. Only extract Revenue and specific Expense categories. You can provide overlapping periods (e.g., a month total AND a quarter total AND a year total). The engine will solve them hierarchically."
@@ -177,6 +174,13 @@ pub struct PeriodConstraint {
     #[serde(default)]
     #[schemars(description = "Metadata to trace this value back to the source document.")]
     pub source: Option<SourceMetadata>,
+}
+
+impl PeriodConstraint {
+    /// Helper to resolve the string period into actual NaiveDates
+    pub fn resolve_dates(&self) -> FHResult<(NaiveDate, NaiveDate)> {
+        parse_period_string(&self.period)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -232,7 +236,7 @@ pub struct DiscoveryResponse {
 }
 
 impl DiscoveryResponse {
-    pub fn get_schema() -> Result<serde_json::Value, serde_json::Error> {
+    pub fn get_schema() -> serde_json::Result<serde_json::Value> {
         FinancialHistoryConfig::clean_schema(schemars::schema_for!(DiscoveryResponse))
     }
 }
@@ -243,7 +247,7 @@ pub struct BalanceSheetExtractionResponse {
 }
 
 impl BalanceSheetExtractionResponse {
-    pub fn get_schema() -> Result<serde_json::Value, serde_json::Error> {
+    pub fn get_schema() -> serde_json::Result<serde_json::Value> {
         FinancialHistoryConfig::clean_schema(schemars::schema_for!(BalanceSheetExtractionResponse))
     }
 }
@@ -254,7 +258,7 @@ pub struct IncomeStatementExtractionResponse {
 }
 
 impl IncomeStatementExtractionResponse {
-    pub fn get_schema() -> Result<serde_json::Value, serde_json::Error> {
+    pub fn get_schema() -> serde_json::Result<serde_json::Value> {
         FinancialHistoryConfig::clean_schema(schemars::schema_for!(
             IncomeStatementExtractionResponse
         ))
@@ -289,14 +293,14 @@ impl FinancialHistoryConfig {
 
     /// Generates a Gemini-compatible schema.
     /// This performs deep cleaning to remove fields Gemini dislikes ($ref, type arrays, additionalProperties).
-    pub fn get_gemini_response_schema() -> Result<serde_json::Value, serde_json::Error> {
+    pub fn get_gemini_response_schema() -> serde_json::Result<serde_json::Value> {
         Self::clean_schema(Self::generate_json_schema())
     }
 
     /// Shared schema cleaning logic that can be reused by other types
     pub fn clean_schema(
         root: schemars::schema::RootSchema,
-    ) -> Result<serde_json::Value, serde_json::Error> {
+    ) -> serde_json::Result<serde_json::Value> {
         let mut root_val = serde_json::to_value(root)?;
 
         // 1. Extract definitions map
@@ -319,12 +323,12 @@ impl FinancialHistoryConfig {
         Ok(root_val)
     }
 
-    pub fn schema_as_json() -> Result<String, serde_json::Error> {
+    pub fn schema_as_json() -> serde_json::Result<String> {
         let schema = Self::generate_json_schema();
         serde_json::to_string_pretty(&schema)
     }
 
-    pub fn schema_as_json_value() -> Result<serde_json::Value, serde_json::Error> {
+    pub fn schema_as_json_value() -> serde_json::Result<serde_json::Value> {
         let schema = Self::generate_json_schema();
         serde_json::to_value(schema)
     }
@@ -450,8 +454,7 @@ mod tests {
                 account_type: AccountType::Revenue,
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    period: "2023-01:2023-12".to_string(),
                     value: 1200000.0,
                     source: None,
                 }],

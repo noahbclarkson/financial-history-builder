@@ -2,7 +2,7 @@ use crate::error::{FinancialHistoryError, Result};
 use crate::llm::{client::GeminiClient, prompts, types::*};
 use crate::schema::*;
 use crate::{process_financial_history, verify_accounting_equation};
-use futures::try_join;
+use futures::{future::try_join_all, try_join};
 use std::collections::HashMap;
 use std::fs;
 use tokio::sync::mpsc::Sender;
@@ -75,7 +75,7 @@ impl FinancialExtractor {
         self.resolve_document_ids(&mut config, &id_map);
 
         // --- STEP 4: FINAL VALIDATION & PATCHING ---
-        config = self.validate_and_fix(config, &progress).await?;
+        config = self.validate_and_fix(config, documents, &progress).await?;
 
         self.send_event(&progress, ExtractionEvent::Success).await;
         Ok(config)
@@ -120,35 +120,78 @@ impl FinancialExtractor {
         org_ctx: &str,
         accounts: &[String],
     ) -> Result<BalanceSheetExtractionResponse> {
+        if accounts.is_empty() {
+            return Ok(BalanceSheetExtractionResponse {
+                balance_sheet: Vec::new(),
+            });
+        }
+
+        let batches = distribute_into_batches(accounts, 25);
+        let total_batches = batches.len();
+
         let schema = BalanceSheetExtractionResponse::get_schema()
             .map_err(FinancialHistoryError::SerializationError)?;
 
-        let account_list = accounts.join("\n- ");
-        let prompt = format!(
-            "{}\n\n{}\n\n## CONTEXT\n{}\n\n## EXTRACT SNAPSHOTS FOR THESE ACCOUNTS\n\
-            Extract balance sheet snapshots for each of the following accounts.\n\
-            Use the EXACT names below. Do not modify or rename them.\n\n- {}\n\n\
-            ## CRITICAL REMINDERS\n\
-            - Set EXACTLY ONE account as `is_balancing_account: true` (prefer Cash)\n\
-            - Use document IDs (\"0\", \"1\", etc.) in `source.document`\n\
-            - Extract ALL available dates (2023, 2022, mid-year if present)\n\
-            - Choose appropriate interpolation: Linear, Step, or Curve\n\n\
-            Return valid JSON matching the BalanceSheetExtractionResponse schema.",
-            prompts::SYSTEM_PROMPT_BS_EXTRACT,
-            manifest,
-            org_ctx,
-            account_list
-        );
+        let futures = batches
+            .into_iter()
+            .enumerate()
+            .map(|(i, batch)| {
+                let batch_index = i + 1;
+                let total_batches = total_batches;
+                let batch_accounts = batch.clone();
+                let manifest = manifest.to_string();
+                let org_ctx = org_ctx.to_string();
+                let schema = schema.clone();
 
-        let content = self
-            .call_llm_with_retry(&prompt, docs, Some(schema), "Balance Sheet Extraction")
-            .await?;
+                async move {
+                    let account_list = batch_accounts.join("\n- ");
+                    let batch_context = format!(
+                        "## BATCH CONTEXT\nProcessing Batch {} of {}.\n\
+                         EXTRACT DATA ONLY FOR THE ACCOUNTS LISTED BELOW.\n\
+                         If you see data for accounts NOT in this list, IGNORE IT.",
+                        batch_index, total_batches
+                    );
 
-        serde_json::from_str(&content).map_err(|e| {
-            // Dump raw output on parse failure
-            let _ = fs::write("debug_balance_sheet_raw_output.json", &content);
-            eprintln!("❌ Failed to parse Balance Sheet JSON. Raw output dumped to debug_balance_sheet_raw_output.json");
-            FinancialHistoryError::SerializationError(e)
+                    let prompt = format!(
+                        "{}\n\n{}\n\n{}\n\n## CONTEXT\n{}\n\n## EXTRACT SNAPSHOTS FOR THESE ACCOUNTS\n\
+                        Extract balance sheet snapshots for each of the following accounts.\n\
+                        Use the EXACT names below. Do not modify or rename them.\n\n- {}\n\n\
+                        ## CRITICAL REMINDERS\n\
+                        - Set EXACTLY ONE account as `is_balancing_account: true` (prefer Cash)\n\
+                        - Use document IDs (\"0\", \"1\", etc.) in `source.document`\n\
+                        - Extract ALL available dates (2023, 2022, mid-year if present)\n\
+                        - Choose appropriate interpolation: Linear, Step, or Curve\n\n\
+                        Return valid JSON matching the BalanceSheetExtractionResponse schema.",
+                        prompts::SYSTEM_PROMPT_BS_EXTRACT,
+                        batch_context,
+                        manifest,
+                        org_ctx,
+                        account_list
+                    );
+
+                    let stage_label = format!("Balance Sheet Batch {}/{}", batch_index, total_batches);
+                    let content = self
+                        .call_llm_with_retry(&prompt, docs, Some(schema), &stage_label)
+                        .await?;
+
+                    let response: BalanceSheetExtractionResponse =
+                        serde_json::from_str(&content).map_err(|e| {
+                            // Dump raw output on parse failure
+                            let _ = fs::write("debug_balance_sheet_raw_output.json", &content);
+                            eprintln!(
+                                "❌ Failed to parse Balance Sheet JSON. Raw output dumped to debug_balance_sheet_raw_output.json"
+                            );
+                            FinancialHistoryError::SerializationError(e)
+                        })?;
+
+                    Ok::<Vec<BalanceSheetAccount>, FinancialHistoryError>(response.balance_sheet)
+                }
+            });
+
+        let results: Vec<Vec<BalanceSheetAccount>> = try_join_all(futures).await?;
+
+        Ok(BalanceSheetExtractionResponse {
+            balance_sheet: results.into_iter().flatten().collect(),
         })
     }
 
@@ -159,36 +202,81 @@ impl FinancialExtractor {
         org_ctx: &str,
         accounts: &[String],
     ) -> Result<IncomeStatementExtractionResponse> {
+        if accounts.is_empty() {
+            return Ok(IncomeStatementExtractionResponse {
+                income_statement: Vec::new(),
+            });
+        }
+
+        let batches = distribute_into_batches(accounts, 25);
+        let total_batches = batches.len();
+
         let schema = IncomeStatementExtractionResponse::get_schema()
             .map_err(FinancialHistoryError::SerializationError)?;
 
-        let account_list = accounts.join("\n- ");
-        let prompt = format!(
-            "{}\n\n{}\n\n## CONTEXT\n{}\n\n## EXTRACT CONSTRAINTS FOR THESE ACCOUNTS\n\
-            Extract period constraints for each of the following accounts.\n\
-            Use the EXACT names below. Do not modify or rename them.\n\n- {}\n\n\
-            ## CRITICAL REMINDERS\n\
-            - Extract ALL available periods (annual, quarterly, monthly if present)\n\
-            - Use document IDs (\"0\", \"1\", etc.) in `source.document`\n\
-            - Choose appropriate seasonality: Flat (most common), RetailPeak, SummerHigh, or SaasGrowth\n\
-            - Do NOT extract calculated totals (Gross Profit, Net Income, EBITDA)\n\
-            - Include overlapping periods (e.g., both monthly AND annual totals)\n\n\
-            Return valid JSON matching the IncomeStatementExtractionResponse schema.",
-            prompts::SYSTEM_PROMPT_IS_EXTRACT,
-            manifest,
-            org_ctx,
-            account_list
-        );
+        let futures = batches
+            .into_iter()
+            .enumerate()
+            .map(|(i, batch)| {
+                let batch_index = i + 1;
+                let total_batches = total_batches;
+                let batch_accounts = batch.clone();
+                let manifest = manifest.to_string();
+                let org_ctx = org_ctx.to_string();
+                let schema = schema.clone();
 
-        let content = self
-            .call_llm_with_retry(&prompt, docs, Some(schema), "Income Statement Extraction")
-            .await?;
+                async move {
+                    let account_list = batch_accounts.join("\n- ");
+                    let batch_context = format!(
+                        "## BATCH CONTEXT\nProcessing Batch {} of {}.\n\
+                         EXTRACT DATA ONLY FOR THE ACCOUNTS LISTED BELOW.\n\
+                         If you see data for accounts NOT in this list, IGNORE IT.",
+                        batch_index, total_batches
+                    );
 
-        serde_json::from_str(&content).map_err(|e| {
-            // Dump raw output on parse failure
-            let _ = fs::write("debug_income_statement_raw_output.json", &content);
-            eprintln!("❌ Failed to parse Income Statement JSON. Raw output dumped to debug_income_statement_raw_output.json");
-            FinancialHistoryError::SerializationError(e)
+                    let prompt = format!(
+                        "{}\n\n{}\n\n{}\n\n## CONTEXT\n{}\n\n## EXTRACT CONSTRAINTS FOR THESE ACCOUNTS\n\
+                        Extract period constraints for each of the following accounts.\n\
+                        Use the EXACT names below. Do not modify or rename them.\n\n- {}\n\n\
+                        ## CRITICAL REMINDERS\n\
+                        - Extract ALL available periods (annual, quarterly, monthly if present)\n\
+                        - Use document IDs (\"0\", \"1\", etc.) in `source.document`\n\
+                        - Choose appropriate seasonality: Flat (most common), RetailPeak, SummerHigh, or SaasGrowth\n\
+                        - Do NOT extract calculated totals (Gross Profit, Net Income, EBITDA)\n\
+                        - Include overlapping periods (e.g., both monthly AND annual totals)\n\n\
+                        Return valid JSON matching the IncomeStatementExtractionResponse schema.",
+                        prompts::SYSTEM_PROMPT_IS_EXTRACT,
+                        batch_context,
+                        manifest,
+                        org_ctx,
+                        account_list
+                    );
+
+                    let stage_label = format!("IS Batch {}/{}", batch_index, total_batches);
+                    let content = self
+                        .call_llm_with_retry(&prompt, docs, Some(schema), &stage_label)
+                        .await?;
+
+                    let response: IncomeStatementExtractionResponse =
+                        serde_json::from_str(&content).map_err(|e| {
+                            // Dump raw output on parse failure
+                            let _ = fs::write("debug_income_statement_raw_output.json", &content);
+                            eprintln!(
+                                "❌ Failed to parse Income Statement JSON. Raw output dumped to debug_income_statement_raw_output.json"
+                            );
+                            FinancialHistoryError::SerializationError(e)
+                        })?;
+
+                    Ok::<Vec<IncomeStatementAccount>, FinancialHistoryError>(
+                        response.income_statement,
+                    )
+                }
+            });
+
+        let results: Vec<Vec<IncomeStatementAccount>> = try_join_all(futures).await?;
+
+        Ok(IncomeStatementExtractionResponse {
+            income_statement: results.into_iter().flatten().collect(),
         })
     }
 
@@ -265,6 +353,7 @@ impl FinancialExtractor {
     async fn validate_and_fix(
         &self,
         mut config: FinancialHistoryConfig,
+        documents: &[RemoteDocument],
         progress: &Option<Sender<ExtractionEvent>>,
     ) -> Result<FinancialHistoryConfig> {
         let max_fix_attempts = 5;
@@ -274,7 +363,7 @@ impl FinancialExtractor {
             self.send_event(progress, ExtractionEvent::Validating { attempt })
                 .await;
 
-            // Check for validation errors
+            // Check for validation errors (Math & Source fields only)
             let validation_error = validate_financial_logic(&config).err();
 
             // ALWAYS run final quality check at least once, even if validation passed
@@ -283,7 +372,7 @@ impl FinancialExtractor {
             if should_run_patch {
                 // Get the patch from the model
                 let patch_result = self
-                    .request_quality_patch(&config, validation_error.as_deref(), attempt)
+                    .request_quality_patch(&config, documents, validation_error.as_deref(), attempt)
                     .await;
 
                 match patch_result {
@@ -362,6 +451,7 @@ impl FinancialExtractor {
     async fn request_quality_patch(
         &self,
         config: &FinancialHistoryConfig,
+        documents: &[RemoteDocument],
         validation_error: Option<&str>,
         attempt: usize,
     ) -> Result<String> {
@@ -371,88 +461,75 @@ impl FinancialExtractor {
         let config_json = serde_json::to_string_pretty(config)
             .map_err(FinancialHistoryError::SerializationError)?;
 
-        // Generate markdown tables if no validation errors
+        // 1. Check for suspicious duplicates (Soft check)
+        let duplicate_warning = detect_suspicious_duplicates(config);
+
+        // 2. Generate markdown tables if no validation errors
         let tables = if validation_error.is_none() {
             Some(generate_markdown_tables(config))
         } else {
             None
         };
 
-        let prompt = if let Some(error) = validation_error {
-            format!(
-                "{}\n\n## VALIDATION ERRORS DETECTED\n\
-                The following validation errors must be fixed:\n\n\
-                ```\n{}\n```\n\n\
-                ## CURRENT CONFIGURATION\n\
-                ```json\n{}\n```\n\n\
-                ## SCHEMA\n\
-                ```json\n{}\n```\n\n\
-                ## YOUR TASK\n\
-                Generate a JSON Patch (RFC 6902) to fix the validation errors above.\n\
-                Return ONLY a valid JSON array of patch operations.\n\
-                If no changes are needed, return an empty array: []",
-                prompts::SYSTEM_PROMPT_VALIDATION,
-                error,
-                config_json,
-                serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string())
-            )
-        } else {
-            format!(
-                "{}\n\n## FINAL QUALITY REVIEW (Attempt {})\n\
-                No validation errors detected. This is your final quality check.\n\n\
-                ## CURRENT CONFIGURATION\n\
-                ```json\n{}\n```\n\n\
-                ## SCHEMA\n\
-                ```json\n{}\n```\n\n\
-                ## MARKDOWN TABLES FOR REVIEW\n\
-                {}\n\n\
-                ## YOUR TASK\n\
-                Review the configuration for:\n\
-                - Missing accounts\n\
-                - Incorrect account names or classifications\n\
-                - Missing source metadata\n\
-                - Invalid or unreasonable numbers\n\
-                - Incomplete data (missing snapshots/constraints)\n\n\
-                Generate a JSON Patch (RFC 6902) to fix any issues.\n\
-                Return ONLY a valid JSON array of patch operations.\n\
-                If everything is perfect, return an empty array: []",
-                prompts::SYSTEM_PROMPT_VALIDATION,
-                attempt,
-                config_json,
-                serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string()),
-                tables.unwrap_or_else(|| "No tables available".to_string())
-            )
-        };
+        let mut prompt = prompts::SYSTEM_PROMPT_VALIDATION.to_string();
 
-        let messages = vec![Content::user(prompt)];
+        // Inject Context sections
+        if let Some(error) = validation_error {
+            prompt.push_str(&format!(
+                "\n\n## 🔴 CRITICAL VALIDATION ERRORS\n\
+                The following errors MUST be fixed via JSON Patch:\n\
+                ```\n{}\n```",
+                error
+            ));
+        }
 
-        // Call the model without a schema (we want raw JSON patch array)
+        if let Some(dup_warn) = duplicate_warning {
+            prompt.push_str(&format!(
+                "\n\n## ⚠️ POTENTIAL DATA INTEGRITY ISSUES\n\
+                We detected potentially suspicious duplicate values. \
+                Please verify against the attached documents if these are correct or double-counting:\n\
+                ```\n{}\n```\n\
+                If these are valid (e.g. coincidentally same value), ignore them. \
+                If they are errors, remove the duplicate constraint via patch.",
+                dup_warn
+            ));
+        }
+
+        prompt.push_str(&format!(
+            "\n\n## CURRENT CONFIGURATION\n```json\n{}\n```",
+            config_json
+        ));
+
+        prompt.push_str(&format!(
+            "\n\n## TARGET SCHEMA\n```json\n{}\n```",
+            serde_json::to_string_pretty(&schema).unwrap_or_default()
+        ));
+
+        if let Some(tbl) = tables {
+             prompt.push_str(&format!("\n\n## VISUAL REVIEW TABLES\n{}", tbl));
+        }
+
+        prompt.push_str("\n\n## YOUR TASK\n\
+        Review the attached documents and the JSON above.\n\
+        Generate a JSON Patch (RFC 6902) array to fix validation errors or data quality issues.\n\
+        Return ONLY a valid JSON array `[]`.");
+
+        let messages = vec![Content::user_with_files(prompt, documents)];
+
         let response = self
             .client
             .generate_content(
                 &self.model,
                 "You are a financial data auditor.",
                 messages,
-                None, // No schema - we want the raw patch
+                None,
                 "application/json",
-                Some(8192),
+                Some(65536),
                 &format!("validation_patch_attempt_{}", attempt),
             )
-            .await
-            .map_err(|e| {
-                // API call failed - this might be HTTP error, MAX_TOKENS, etc.
-                eprintln!("❌ Failed to get validation patch response: {}", e);
-                e
-            })?;
+            .await?;
 
-        // Try to extract the JSON array
-        let extracted = extract_first_json_array(&response);
-
-        // Dump the raw response for debugging
-        let filename = format!("debug_quality_patch_response_attempt_{}.json", attempt);
-        let _ = fs::write(&filename, &response);
-
-        Ok(extracted)
+        Ok(extract_first_json_array(&response))
     }
 
     fn apply_patch(
@@ -670,6 +747,21 @@ fn extract_first_json_array(input: &str) -> String {
     input[start_index..].to_string()
 }
 
+fn distribute_into_batches(items: &[String], max_per_batch: usize) -> Vec<Vec<String>> {
+    if items.is_empty() || max_per_batch == 0 {
+        return vec![];
+    }
+
+    let total = items.len();
+    let num_batches = (total + max_per_batch - 1) / max_per_batch;
+    let batch_size = (total + num_batches - 1) / num_batches;
+
+    items
+        .chunks(batch_size)
+        .map(|chunk| chunk.to_vec())
+        .collect()
+}
+
 fn create_document_manifest(documents: &[RemoteDocument]) -> (String, HashMap<String, String>) {
     let mut manifest = String::from(
         "═══════════════════════════════════════════════════════════════════\n\
@@ -704,7 +796,7 @@ fn create_document_manifest(documents: &[RemoteDocument]) -> (String, HashMap<St
 }
 
 fn validate_financial_logic(cfg: &FinancialHistoryConfig) -> std::result::Result<(), String> {
-    // 1. Check Sources
+    // 1. Check Sources (Keep this strict)
     for acc in &cfg.balance_sheet {
         for (i, snap) in acc.snapshots.iter().enumerate() {
             if snap.source.is_none() {
@@ -726,13 +818,53 @@ fn validate_financial_logic(cfg: &FinancialHistoryConfig) -> std::result::Result
         }
     }
 
-    // 2. Check Math
+    // 2. Check Math (Keep this strict)
     match process_financial_history(cfg) {
         Ok(dense) => match verify_accounting_equation(cfg, &dense, 1.0) {
             Ok(_) => Ok(()),
             Err(e) => Err(format!("Accounting Equation Violation: {}", e)),
         },
         Err(e) => Err(format!("Processing Engine Error: {}", e)),
+    }
+}
+
+/// Helper to generate warning text for AI review instead of hard error
+fn detect_suspicious_duplicates(cfg: &FinancialHistoryConfig) -> Option<String> {
+    let mut values_seen: HashMap<i64, Vec<String>> = HashMap::new();
+    let mut warnings = Vec::new();
+
+    for acc in &cfg.income_statement {
+        for cons in &acc.constraints {
+            let v = cons.value;
+            // Only flag non-round numbers or large round numbers that look suspiciously specific
+            if v > 100.0 && (v.fract() > 0.0 || v % 100.0 != 0.0) {
+                let cents = (v * 100.0).round() as i64;
+                values_seen.entry(cents).or_default().push(acc.name.clone());
+            }
+        }
+    }
+
+    for (cents, accounts) in values_seen {
+        if accounts.len() > 1 {
+            // Deduplicate account names
+            let mut unique_accounts = accounts.clone();
+            unique_accounts.sort();
+            unique_accounts.dedup();
+
+            if unique_accounts.len() > 1 {
+                let val = cents as f64 / 100.0;
+                warnings.push(format!(
+                    "- Value {:.2} appears in multiple accounts: {}",
+                    val, unique_accounts.join(", ")
+                ));
+            }
+        }
+    }
+
+    if warnings.is_empty() {
+        None
+    } else {
+        Some(warnings.join("\n"))
     }
 }
 

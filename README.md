@@ -110,10 +110,11 @@ fn main() -> Result<()> {
                     BalanceSheetSnapshot {
                         date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
                         value: 150_000.0,
+                        source: None,
                     }
                 ],
                 is_balancing_account: true, // <--- Auto-calculates this
-                noise_factor: None,
+                noise_factor: 0.0,
             },
         ],
         // Income Statement: Period Constraints
@@ -125,18 +126,18 @@ fn main() -> Result<()> {
                 constraints: vec![
                     // Constraint 1: Full Year
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: "2023-01:2023-12".to_string(),
                         value: 1_200_000.0,
+                        source: None,
                     },
                     // Constraint 2: Specific Q4 bump
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 10, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: "2023-10:2023-12".to_string(),
                         value: 400_000.0, 
+                        source: None,
                     }
                 ],
-                noise_factor: Some(0.05), // Add 5% random noise
+                noise_factor: 0.05, // Add 5% random noise
             },
         ],
     };

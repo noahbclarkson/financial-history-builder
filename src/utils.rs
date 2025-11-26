@@ -191,4 +191,62 @@ mod tests {
         assert_eq!(get_fiscal_month_index(12, 6), 5); // Dec is month 5
         assert_eq!(get_fiscal_month_index(6, 6), 11); // June is month 11
     }
+
+    #[test]
+    fn test_parse_period_string_month_and_range() {
+        let (start, end) = parse_period_string("2023-02").unwrap();
+        assert_eq!(start, NaiveDate::from_ymd_opt(2023, 2, 1).unwrap());
+        assert_eq!(end, NaiveDate::from_ymd_opt(2023, 2, 28).unwrap());
+
+        let (start, end) = parse_period_string("2023-01:2023-03").unwrap();
+        assert_eq!(start, NaiveDate::from_ymd_opt(2023, 1, 1).unwrap());
+        assert_eq!(end, NaiveDate::from_ymd_opt(2023, 3, 31).unwrap());
+    }
+}
+
+/// Parses a period string in the format "YYYY-MM" or "YYYY-MM:YYYY-MM"
+/// Returns (start_date, end_date)
+pub fn parse_period_string(period: &str) -> Result<(NaiveDate, NaiveDate)> {
+    let parts: Vec<&str> = period.split(':').collect();
+
+    match parts.len() {
+        1 => {
+            // Single month: "2023-01"
+            let start_str = format!("{}-01", parts[0].trim());
+            let start_date = NaiveDate::parse_from_str(&start_str, "%Y-%m-%d").map_err(|_| {
+                FinancialHistoryError::DateError(format!(
+                    "Invalid date format in period: {}. Expected YYYY-MM",
+                    parts[0]
+                ))
+            })?;
+
+            let end_date = last_day_of_month(start_date.year(), start_date.month());
+            Ok((start_date, end_date))
+        }
+        2 => {
+            // Range: "2023-01:2023-03"
+            let start_str = format!("{}-01", parts[0].trim());
+            let start_date = NaiveDate::parse_from_str(&start_str, "%Y-%m-%d").map_err(|_| {
+                FinancialHistoryError::DateError(format!(
+                    "Invalid start date format in period: {}. Expected YYYY-MM",
+                    parts[0]
+                ))
+            })?;
+
+            let end_str = format!("{}-01", parts[1].trim());
+            let end_start_ref = NaiveDate::parse_from_str(&end_str, "%Y-%m-%d").map_err(|_| {
+                FinancialHistoryError::DateError(format!(
+                    "Invalid end date format in period: {}. Expected YYYY-MM",
+                    parts[1]
+                ))
+            })?;
+
+            let end_date = last_day_of_month(end_start_ref.year(), end_start_ref.month());
+            Ok((start_date, end_date))
+        }
+        _ => Err(FinancialHistoryError::DateError(format!(
+            "Invalid period format: {}. Expected 'YYYY-MM' or 'YYYY-MM:YYYY-MM'",
+            period
+        ))),
+    }
 }

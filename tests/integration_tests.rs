@@ -42,6 +42,17 @@ fn export_to_csv(
     Ok(())
 }
 
+fn period_range(start_year: i32, start_month: u32, end_year: i32, end_month: u32) -> String {
+    if start_year == end_year && start_month == end_month {
+        format!("{:04}-{:02}", start_year, start_month)
+    } else {
+        format!(
+            "{:04}-{:02}:{:04}-{:02}",
+            start_year, start_month, end_year, end_month
+        )
+    }
+}
+
 #[test]
 fn test_comprehensive_retail_business() {
     let config = FinancialHistoryConfig {
@@ -224,14 +235,12 @@ fn test_comprehensive_retail_business() {
                 seasonality_profile: SeasonalityProfileId::RetailPeak,
                 constraints: vec![
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        period: period_range(2022, 1, 2022, 12),
                         value: 2_400_000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: period_range(2023, 1, 2023, 12),
                         value: 3_000_000.0,
                         source: None,
                     },
@@ -244,14 +253,12 @@ fn test_comprehensive_retail_business() {
                 seasonality_profile: SeasonalityProfileId::RetailPeak,
                 constraints: vec![
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        period: period_range(2022, 1, 2022, 12),
                         value: 1_440_000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: period_range(2023, 1, 2023, 12),
                         value: 1_800_000.0,
                         source: None,
                     },
@@ -264,14 +271,12 @@ fn test_comprehensive_retail_business() {
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        period: period_range(2022, 1, 2022, 12),
                         value: 120_000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: period_range(2023, 1, 2023, 12),
                         value: 132_000.0,
                         source: None,
                     },
@@ -284,14 +289,12 @@ fn test_comprehensive_retail_business() {
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        period: period_range(2022, 1, 2022, 12),
                         value: 480_000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: period_range(2023, 1, 2023, 12),
                         value: 540_000.0,
                         source: None,
                     },
@@ -304,14 +307,12 @@ fn test_comprehensive_retail_business() {
                 seasonality_profile: SeasonalityProfileId::RetailPeak,
                 constraints: vec![
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        period: period_range(2022, 1, 2022, 12),
                         value: 144_000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: period_range(2023, 1, 2023, 12),
                         value: 180_000.0,
                         source: None,
                     },
@@ -470,14 +471,12 @@ fn test_saas_startup() {
                 seasonality_profile: SeasonalityProfileId::SaasGrowth,
                 constraints: vec![
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        period: period_range(2022, 1, 2022, 12),
                         value: 600_000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: period_range(2023, 1, 2023, 12),
                         value: 1_200_000.0,
                         source: None,
                     },
@@ -490,14 +489,12 @@ fn test_saas_startup() {
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        period: period_range(2022, 1, 2022, 12),
                         value: 150_000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: period_range(2023, 1, 2023, 12),
                         value: 300_000.0,
                         source: None,
                     },
@@ -510,14 +507,12 @@ fn test_saas_startup() {
                 seasonality_profile: SeasonalityProfileId::SaasGrowth,
                 constraints: vec![
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        period: period_range(2022, 1, 2022, 12),
                         value: 120_000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: period_range(2023, 1, 2023, 12),
                         value: 240_000.0,
                         source: None,
                     },
@@ -530,14 +525,12 @@ fn test_saas_startup() {
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        period: period_range(2022, 1, 2022, 12),
                         value: 720_000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: period_range(2023, 1, 2023, 12),
                         value: 960_000.0,
                         source: None,
                     },
@@ -550,14 +543,12 @@ fn test_saas_startup() {
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        period: period_range(2022, 1, 2022, 12),
                         value: 300_000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: period_range(2023, 1, 2023, 12),
                         value: 480_000.0,
                         source: None,
                     },
@@ -570,14 +561,12 @@ fn test_saas_startup() {
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                        period: period_range(2022, 1, 2022, 12),
                         value: 60_000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: period_range(2023, 1, 2023, 12),
                         value: 72_000.0,
                         source: None,
                     },
@@ -703,8 +692,7 @@ fn test_hospitality_business() {
                 account_type: AccountType::Revenue,
                 seasonality_profile: SeasonalityProfileId::SummerHigh,
                 constraints: vec![PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    period: period_range(2023, 1, 2023, 12),
                     value: 1_800_000.0,
                     source: None,
                 }],
@@ -715,8 +703,7 @@ fn test_hospitality_business() {
                 account_type: AccountType::Revenue,
                 seasonality_profile: SeasonalityProfileId::SummerHigh,
                 constraints: vec![PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    period: period_range(2023, 1, 2023, 12),
                     value: 600_000.0,
                     source: None,
                 }],
@@ -727,8 +714,7 @@ fn test_hospitality_business() {
                 account_type: AccountType::CostOfSales,
                 seasonality_profile: SeasonalityProfileId::SummerHigh,
                 constraints: vec![PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    period: period_range(2023, 1, 2023, 12),
                     value: 210_000.0,
                     source: None,
                 }],
@@ -739,8 +725,7 @@ fn test_hospitality_business() {
                 account_type: AccountType::OperatingExpense,
                 seasonality_profile: SeasonalityProfileId::SummerHigh,
                 constraints: vec![PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    period: period_range(2023, 1, 2023, 12),
                     value: 720_000.0,
                     source: None,
                 }],
@@ -751,8 +736,7 @@ fn test_hospitality_business() {
                 account_type: AccountType::OperatingExpense,
                 seasonality_profile: SeasonalityProfileId::SummerHigh,
                 constraints: vec![PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    period: period_range(2023, 1, 2023, 12),
                     value: 120_000.0,
                     source: None,
                 }],
@@ -763,8 +747,7 @@ fn test_hospitality_business() {
                 account_type: AccountType::OperatingExpense,
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    period: period_range(2023, 1, 2023, 12),
                     value: 240_000.0,
                     source: None,
                 }],
@@ -963,8 +946,7 @@ fn test_retained_earnings_integrity_check() {
             account_type: AccountType::Revenue,
             seasonality_profile: SeasonalityProfileId::Flat,
             constraints: vec![PeriodConstraint {
-                start_date: NaiveDate::from_ymd_opt(2023, 2, 1).unwrap(),
-                end_date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
+                period: period_range(2023, 2, 2023, 2),
                 value: 100_000.0,
                 source: None,
             }],
@@ -1014,20 +996,17 @@ fn test_hierarchical_constraints() {
             seasonality_profile: SeasonalityProfileId::Flat,
             constraints: vec![
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 1, 31).unwrap(),
+                    period: period_range(2023, 1, 2023, 1),
                     value: 10_000.0,
                     source: None,
                 },
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 2, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
+                    period: period_range(2023, 2, 2023, 2),
                     value: 0.0,
                     source: None,
                 },
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 3, 31).unwrap(),
+                    period: period_range(2023, 1, 2023, 3),
                     value: 25_000.0,
                     source: None,
                 },
@@ -1098,14 +1077,12 @@ fn test_quarterly_constraints() {
             seasonality_profile: SeasonalityProfileId::Flat,
             constraints: vec![
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 6, 30).unwrap(),
+                    period: period_range(2023, 1, 2023, 6),
                     value: 50_000.0,
                     source: None,
                 },
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 7, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 9, 30).unwrap(),
+                    period: period_range(2023, 7, 2023, 9),
                     value: 15_000.0,
                     source: None,
                 },

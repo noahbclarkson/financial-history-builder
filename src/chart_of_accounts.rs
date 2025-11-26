@@ -307,8 +307,7 @@ mod tests {
                 account_type: AccountType::Revenue,
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    period: "2023-01:2023-12".to_string(),
                     value: 100000.0,
                     source: None,
                 }],

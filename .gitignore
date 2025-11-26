@@ -24,3 +24,4 @@ test_chart_of_accounts.md
 # Added by cargo
 /target
 examples/documents
+CLAUDE.md

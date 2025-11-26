@@ -1,6 +1,17 @@
 use chrono::{Datelike, NaiveDate};
 use financial_history_builder::*;
 
+fn period_range(start_year: i32, start_month: u32, end_year: i32, end_month: u32) -> String {
+    if start_year == end_year && start_month == end_month {
+        format!("{:04}-{:02}", start_year, start_month)
+    } else {
+        format!(
+            "{:04}-{:02}:{:04}-{:02}",
+            start_year, start_month, end_year, end_month
+        )
+    }
+}
+
 fn main() {
     println!("📊 Intra-Year Constraint Demo\n");
     println!(
@@ -36,14 +47,12 @@ fn main() {
             seasonality_profile: SeasonalityProfileId::Flat,
             constraints: vec![
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 6, 30).unwrap(),
+                    period: period_range(2023, 1, 2023, 6),
                     value: 300000.0,
                     source: None,
                 },
                 PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    period: period_range(2023, 1, 2023, 12),
                     value: 600000.0,
                     source: None,
                 },

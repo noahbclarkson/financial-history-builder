@@ -71,8 +71,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 Extract financial data and output JSON matching the provided schema.
 
 TRUST LAYER - SOURCE TRACKING:
-- Populate `source` on snapshots/constraints with `{ document_name, original_text }`.
-- If extracting from a table, map the numeric value but leave `original_text` null to save tokens.
+- Populate `source` on snapshots/constraints with `{ document, text }`.
+- If extracting from a table, map the numeric value but leave `text` null to save tokens.
 
 THE NEW FINANCIAL MODEL:
 1. BALANCE SHEET (Point-in-time snapshots):
@@ -92,25 +92,25 @@ THE NEW FINANCIAL MODEL:
 
 2. INCOME STATEMENT (Period totals):
    - Use `income_statement` array
-   - Each account has `constraints` with `{start_date, end_date, value}`
+   - Each account has `constraints` with `period` string + `value` (e.g., \"2023-01\" or \"2023-01:2023-12\")
    - PROVIDE ALL OVERLAPPING PERIODS YOU SEE:
-     * Monthly values
-     * Quarterly totals
-     * Half-year totals
-     * Annual totals
-   - Example: If you see "Q4 was $1.5M" and "Full year was $3.5M", provide BOTH:
-     * Constraint: 2023-10-01 to 2023-12-31 = $1,500,000
-     * Constraint: 2023-01-01 to 2023-12-31 = $3,500,000
-   - Example: If you see "YTD June was $510k" and "Full year was $2.1M", provide BOTH:
-     * Constraint: 2023-01-01 to 2023-06-30 = $510,000
-     * Constraint: 2023-01-01 to 2023-12-31 = $2,100,000
+     * Monthly values (\"2023-01\")
+     * Quarterly totals (\"2023-01:2023-03\")
+     * Half-year totals (\"2023-01:2023-06\")
+     * Annual totals (\"2023-01:2023-12\")
+   - Example: If you see \"Q4 was $1.5M\" and \"Full year was $3.5M\", provide BOTH:
+     * Constraint: period \"2023-10:2023-12\" = $1,500,000
+     * Constraint: period \"2023-01:2023-12\" = $3,500,000
+   - Example: If you see \"YTD June was $510k\" and \"Full year was $2.1M\", provide BOTH:
+     * Constraint: period \"2023-01:2023-06\" = $510,000
+     * Constraint: period \"2023-01:2023-12\" = $2,100,000
    - Choose seasonality profile: Flat, RetailPeak, SummerHigh, SaasGrowth
 
 IMPORTANT RULES:
 1. Exactly ONE balance sheet account MUST have is_balancing_account: true (usually Cash)
 2. Extract organization name and fiscal year end month (1-12)
 3. Account types: Asset, Liability, Equity, Revenue, CostOfSales, OperatingExpense, OtherIncome
-4. Dates should be in YYYY-MM-DD format (month-end preferred)
+4. Balance Sheet snapshot dates should be YYYY-MM-DD (month-end preferred); Income Statement uses `period` strings as described above
 5. For balance sheet: Extract opening AND closing balances if both years are mentioned
 
 OUTPUT:

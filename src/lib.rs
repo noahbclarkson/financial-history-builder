@@ -48,8 +48,7 @@
 //!             seasonality_profile: SeasonalityProfileId::Flat,
 //!             constraints: vec![
 //!                 PeriodConstraint {
-//!                     start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-//!                     end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+//!                     period: "2023-01:2023-12".to_string(),
 //!                     value: 1_200_000.0,
 //!                     source: None,
 //!                 },
@@ -174,12 +173,23 @@ pub fn process_with_verification(
 fn validate_config_integrity(config: &FinancialHistoryConfig) -> Result<()> {
     for account in &config.income_statement {
         for (idx, constraint) in account.constraints.iter().enumerate() {
-            if constraint.end_date < constraint.start_date {
+            let (start, end) =
+                constraint
+                    .resolve_dates()
+                    .map_err(|e| FinancialHistoryError::ValidationError {
+                        account: account.name.clone(),
+                        details: format!(
+                            "Constraint #{} has invalid period format '{}': {}",
+                            idx, constraint.period, e
+                        ),
+                    })?;
+
+            if end < start {
                 return Err(FinancialHistoryError::ValidationError {
                     account: account.name.clone(),
                     details: format!(
-                        "Constraint #{} has end_date {} which is before start_date {}. Dates must be chronological.",
-                        idx, constraint.end_date, constraint.start_date
+                        "Constraint #{} period '{}' results in end_date {} before start_date {}.",
+                        idx, constraint.period, end, start
                     ),
                 });
             }
@@ -320,8 +330,7 @@ mod tests {
                 account_type: AccountType::Revenue,
                 seasonality_profile: SeasonalityProfileId::RetailPeak,
                 constraints: vec![PeriodConstraint {
-                    start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                    end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                    period: "2023-01:2023-12".to_string(),
                     value: 1_200_000.0,
                     source: None,
                 }],
@@ -353,20 +362,17 @@ mod tests {
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 2, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 2, 28).unwrap(),
+                        period: "2023-02".to_string(),
                         value: 5000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 3, 31).unwrap(),
+                        period: "2023-01:2023-03".to_string(),
                         value: 13000.0,
                         source: None,
                     },
                     PeriodConstraint {
-                        start_date: NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
-                        end_date: NaiveDate::from_ymd_opt(2023, 12, 31).unwrap(),
+                        period: "2023-01:2023-12".to_string(),
                         value: 50000.0,
                         source: None,
                     },

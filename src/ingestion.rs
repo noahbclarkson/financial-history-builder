@@ -60,9 +60,14 @@ pub fn convert_tb_to_config(
                 let fiscal_year_start =
                     NaiveDate::from_ymd_opt(row.date.year(), 1, 1).unwrap_or(row.date);
 
+                let period_str = format!(
+                    "{}:{}",
+                    fiscal_year_start.format("%Y-%m"),
+                    row.date.format("%Y-%m")
+                );
+
                 account.constraints.push(PeriodConstraint {
-                    start_date: fiscal_year_start,
-                    end_date: row.date,
+                    period: period_str,
                     value: row.ytd_value,
                     source: Some(SourceMetadata {
                         document_name: row.source_doc.clone(),

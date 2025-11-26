@@ -70,9 +70,9 @@ The system uses **two distinct mathematical approaches** for different types of 
    - If you ALSO see "Feb Sales: $5k" → add ANOTHER constraint from Feb 1 to Feb 28
    - If you ALSO see "2023 Sales: $50k" → add ANOTHER constraint from Jan 1 to Dec 31
 3. **The more constraints, the better**: Don't hold back! If the document mentions monthly, quarterly, and yearly totals, include ALL of them.
-4. **Date Format**:
-   - `start_date`: First day of the period (e.g., 2023-01-01 for January, 2023-01-01 for Q1)
-   - `end_date`: Last day of the period (e.g., 2023-01-31 for January, 2023-03-31 for Q1)
+4. **Period Format**:
+   - Use `period` strings: `"YYYY-MM"` for a single month or `"YYYY-MM:YYYY-MM"` for a range.
+   - Examples: `"2023-01"` (January 2023), `"2023-01:2023-03"` (Q1 2023), `"2023-01:2023-12"` (FY 2023).
 5. **Seasonality Profile**:
    - `Flat`: Even distribution (use when no pattern is known)
    - `RetailPeak`: Heavy December (retail/e-commerce)
@@ -122,60 +122,58 @@ Without source metadata, financial data becomes "black box" numbers that cannot 
 
 For **every** `BalanceSheetSnapshot` and **every** `PeriodConstraint`, you MUST populate the `source` field with:
 
-1. **`document_name`**: The EXACT filename from the Document Manifest (provided at the start of the prompt). Do not invent, modify, or guess filenames.
+1. **`document`**: The numeric Document ID from the manifest (e.g., `"0"`, `"1"`). Do not use filenames.
 
-2. **`original_text`** (SMART OPTIONAL):
-   - **When to INCLUDE `original_text`**:
+2. **`text`** (SMART OPTIONAL):
+   - **When to INCLUDE `text`**:
      - The source row/line label is **different** from the account name you're extracting (e.g., extracting "Professional Fees" but the row says "Legal & Consulting")
      - The value came from **narrative text** rather than a labeled table row (e.g., "Revenue for 2023 was $3.5M" in a paragraph)
      - The value was **inferred or calculated** (e.g., "Inferred from 2022 ending balance to serve as 2022 opening balance")
 
-   - **When to OMIT `original_text`** (leave as `null` or omit the field):
+   - **When to OMIT `text`** (leave as `null` or omit the field):
      - The account name **exactly matches** the row label in a financial table
      - Example: Extracting "Entertainment (Non Deductible)" from a row labeled "Entertainment (Non Deductible)" in the Income Statement
      - This reduces token usage and improves efficiency without losing traceability
 
 ### Special Cases
 
-**Inferred or Calculated Values**: If you must infer a value to make the math work (e.g., calculating an opening balance from a closing balance, or deriving a missing month from quarterly totals), you MUST include `original_text` explaining the inference:
+**Inferred or Calculated Values**: If you must infer a value to make the math work (e.g., calculating an opening balance from a closing balance, or deriving a missing month from quarterly totals), you MUST include `text` explaining the inference:
 
 ```json
 {
   "source": {
-    "document_name": "2023_Financials.pdf",
-    "original_text": "Inferred: Used Dec 31, 2022 closing balance ($142k from page 4) as Jan 31, 2022 opening balance to establish starting position"
+    "document": "0",
+    "text": "Inferred: Used Dec 31, 2022 closing balance ($142k from page 4) as Jan 31, 2022 opening balance to establish starting position"
   }
 }
 ```
 
-**Matching Row Labels** (Most Common - Original Text Optional): When extracting from a financial table where the row label exactly matches the account name, you can omit `original_text`:
+**Matching Row Labels** (Most Common - Text Optional): When extracting from a financial table where the row label exactly matches the account name, you can omit `text`:
 
 ```json
 {
   "name": "Entertainment (Non Deductible)",
   "constraints": [{
-    "start_date": "2025-01-01",
-    "end_date": "2025-12-31",
+    "period": "2025-01:2025-12",
     "value": 15000.0,
     "source": {
-      "document_name": "FY2025_Draft.pdf"
+      "document": "1"
     }
   }]
 }
 ```
 
-**Different Row Labels**: If the source label differs from your account name, include `original_text`:
+**Different Row Labels**: If the source label differs from your account name, include `text`:
 
 ```json
 {
   "name": "Professional Fees",
   "constraints": [{
-    "start_date": "2025-01-01",
-    "end_date": "2025-12-31",
+    "period": "2025-01:2025-12",
     "value": 25000.0,
     "source": {
-      "document_name": "FY2025_Draft.pdf",
-      "original_text": "Extracted from row labeled 'Legal & Consulting Services'"
+      "document": "1",
+      "text": "Extracted from row labeled 'Legal & Consulting Services'"
     }
   }]
 }
@@ -201,10 +199,10 @@ When extracting dates, apply these reasoning rules:
 - **Opening balances**: If the earliest balance is "Dec 31, 2022: $142k", create an opening snapshot at "Jan 31, 2022: $142k" (or "Dec 31, 2021: $142k" for same value)
 
 **Income Statement Periods:**
-- "January 2023 revenue" → `start_date: "2023-01-01"`, `end_date: "2023-01-31"`
-- "Q1 2023" → `start_date: "2023-01-01"`, `end_date: "2023-03-31"`
-- "Fiscal year 2023" (calendar year) → `start_date: "2023-01-01"`, `end_date: "2023-12-31"`
-- "Fiscal year 2023" (July-June) → `start_date: "2022-07-01"`, `end_date: "2023-06-30"`
+- "January 2023 revenue" → `period: "2023-01"`
+- "Q1 2023" → `period: "2023-01:2023-03"`
+- "Fiscal year 2023" (calendar year) → `period: "2023-01:2023-12"`
+- "Fiscal year 2023" (July-June) → `period: "2022-07:2023-06"`
 
 **Edge Cases:**
 - If a month shows $0 revenue in the document → extract a constraint for that specific month with `value: 0.0` (prevents system from spreading annual revenue into that month)
@@ -242,10 +240,10 @@ Below is the **live schema** generated from the Rust code. The schema includes a
 {
   "income_statement": [{
     "name": "Revenue",
-    "seasonality_profile": "Flat",
+    "seasonality": "Flat",
     "constraints": [
-      { "start_date": "2023-02-01", "end_date": "2023-02-28", "value": 5000 },
-      { "start_date": "2023-01-01", "end_date": "2023-12-31", "value": 50000 }
+      { "period": "2023-02", "value": 5000 },
+      { "period": "2023-01:2023-12", "value": 50000 }
     ]
   }]
 }
@@ -313,29 +311,29 @@ Total Liabilities & Equity      $1,285,000  $  997,000
           "date": "2022-01-31",
           "value": 142000.0,
           "source": {
-            "document_name": "ACME_Financials_2023.pdf",
-            "original_text": "Inferred: Used Dec 31, 2022 balance as opening balance for FY 2022"
+            "document": "0",
+            "text": "Inferred: Used Dec 31, 2022 balance as opening balance for FY 2022"
           }
         },
         {
           "date": "2022-12-31",
           "value": 142000.0,
           "source": {
-            "document_name": "ACME_Financials_2023.pdf",
-            "original_text": "Balance Sheet, Cash at Bank row, 2022 column"
+            "document": "0",
+            "text": "Balance Sheet, Cash at Bank row, 2022 column"
           }
         },
         {
           "date": "2023-12-31",
           "value": 185000.0,
           "source": {
-            "document_name": "ACME_Financials_2023.pdf",
-            "original_text": "Balance Sheet, Cash at Bank row, 2023 column"
+            "document": "0",
+            "text": "Balance Sheet, Cash at Bank row, 2023 column"
           }
         }
       ],
       "is_balancing_account": true,
-      "noise_factor": 0.03
+      "noise": 0.03
     },
     {
       "name": "Accounts Receivable",
@@ -346,7 +344,7 @@ Total Liabilities & Equity      $1,285,000  $  997,000
         { "date": "2022-12-31", "value": 335000.0 },
         { "date": "2023-12-31", "value": 420000.0 }
       ],
-      "noise_factor": 0.04
+      "noise": 0.04
     },
     {
       "name": "Inventory",
@@ -357,7 +355,7 @@ Total Liabilities & Equity      $1,285,000  $  997,000
         { "date": "2022-12-31", "value": 520000.0 },
         { "date": "2023-12-31", "value": 680000.0 }
       ],
-      "noise_factor": 0.05
+      "noise": 0.05
     },
     {
       "name": "Accounts Payable",
@@ -368,7 +366,7 @@ Total Liabilities & Equity      $1,285,000  $  997,000
         { "date": "2022-12-31", "value": 215000.0 },
         { "date": "2023-12-31", "value": 285000.0 }
       ],
-      "noise_factor": 0.03
+      "noise": 0.03
     },
     {
       "name": "Bank Loan",
@@ -379,7 +377,7 @@ Total Liabilities & Equity      $1,285,000  $  997,000
         { "date": "2022-12-31", "value": 500000.0 },
         { "date": "2023-12-31", "value": 450000.0 }
       ],
-      "noise_factor": 0.0
+      "noise": 0.0
     },
     {
       "name": "Share Capital",
@@ -390,7 +388,7 @@ Total Liabilities & Equity      $1,285,000  $  997,000
         { "date": "2022-12-31", "value": 500000.0 },
         { "date": "2023-12-31", "value": 500000.0 }
       ],
-      "noise_factor": 0.0
+      "noise": 0.0
     },
     {
       "name": "Retained Earnings",
@@ -401,75 +399,73 @@ Total Liabilities & Equity      $1,285,000  $  997,000
         { "date": "2022-12-31", "value": -218000.0 },
         { "date": "2023-12-31", "value": 50000.0 }
       ],
-      "noise_factor": 0.0
+      "noise": 0.0
     }
   ],
   "income_statement": [
     {
       "name": "Sales Revenue",
       "account_type": "Revenue",
-      "seasonality_profile": "RetailPeak",
+      "seasonality": "RetailPeak",
       "constraints": [
         {
-          "start_date": "2022-01-01",
-          "end_date": "2022-12-31",
+          "period": "2022-01:2022-12",
           "value": 2800000.0,
           "source": {
-            "document_name": "ACME_Financials_2023.pdf",
-            "original_text": "Income Statement, Sales Revenue row, 2022 column"
+            "document": "0",
+            "text": "Income Statement, Sales Revenue row, 2022 column"
           }
         },
         {
-          "start_date": "2023-01-01",
-          "end_date": "2023-12-31",
+          "period": "2023-01:2023-12",
           "value": 3500000.0,
           "source": {
-            "document_name": "ACME_Financials_2023.pdf",
-            "original_text": "Income Statement, Sales Revenue row, 2023 column"
+            "document": "0",
+            "text": "Income Statement, Sales Revenue row, 2023 column"
           }
         }
       ],
-      "noise_factor": 0.05
+      "noise": 0.05
     },
     {
       "name": "Cost of Goods Sold",
       "account_type": "CostOfSales",
-      "seasonality_profile": "RetailPeak",
+      "seasonality": "RetailPeak",
       "constraints": [
-        { "start_date": "2022-01-01", "end_date": "2022-12-31", "value": 1680000.0 },
-        { "start_date": "2023-01-01", "end_date": "2023-12-31", "value": 2100000.0 }
+        { "period": "2022-01:2022-12", "value": 1680000.0 },
+        { "period": "2023-01:2023-12", "value": 2100000.0 }
       ],
-      "noise_factor": 0.04
+      "noise": 0.04
     },
     {
       "name": "Salaries & Wages",
       "account_type": "OperatingExpense",
-      "seasonality_profile": "Flat",
+      "seasonality": "Flat",
       "constraints": [
-        { "start_date": "2022-01-01", "end_date": "2022-12-31", "value": 580000.0 },
-        { "start_date": "2023-01-01", "end_date": "2023-12-31", "value": 650000.0 }
+        { "period": "2022-01:2022-12", "value": 580000.0 },
+        { "period": "2023-01:2023-12", "value": 650000.0 }
       ],
-      "noise_factor": 0.02
+      "noise": 0.02
     },
     {
       "name": "Rent Expense",
       "account_type": "OperatingExpense",
-      "seasonality_profile": "Flat",
+      "seasonality": "Flat",
       "constraints": [
-        { "start_date": "2022-01-01", "end_date": "2022-12-31", "value": 120000.0 },
-        { "start_date": "2023-01-01", "end_date": "2023-12-31", "value": 120000.0 }
+        { "period": "2022-01:2022-12", "value": 120000.0 },
+        { "period": "2023-01:2023-12", "value": 120000.0 }
       ],
-      "noise_factor": 0.0
+      "noise": 0.0
     },
     {
       "name": "Marketing & Advertising",
       "account_type": "OperatingExpense",
-      "seasonality_profile": "RetailPeak",
+      "seasonality": "RetailPeak",
       "constraints": [
-        { "start_date": "2022-01-01", "end_date": "2022-12-31", "value": 210000.0 },
-        { "start_date": "2023-01-01", "end_date": "2023-12-31", "value": 280000.0 }
+        { "period": "2022-01:2022-12", "value": 210000.0 },
+        { "period": "2023-01:2023-12", "value": 280000.0 }
       ],
-      "noise_factor": 0.08
+      "noise": 0.08
     }
   ]
 }
@@ -504,17 +500,17 @@ Generally we want flat for most accounts.
 
 Before outputting JSON, verify:
 
-- [ ] **EVERY snapshot has a populated `source` field** with `document_name` (from Document Manifest)
-- [ ] **EVERY constraint has a populated `source` field** with `document_name` (from Document Manifest)
-- [ ] **`original_text` is included** when: row label differs from account name, value from narrative text, or value was inferred
-- [ ] **`original_text` can be omitted** when: account name exactly matches the table row label
+- [ ] **EVERY snapshot has a populated `source` field** with `document` (numeric ID from manifest)
+- [ ] **EVERY constraint has a populated `source` field** with `document` (numeric ID from manifest)
+- [ ] **`text` is included** when: row label differs from account name, value from narrative text, or value was inferred
+- [ ] **`text` can be omitted** when: account name exactly matches the table row label
 - [ ] All monetary values are absolute values (no parentheses for negatives)
 - [ ] All dates are in `YYYY-MM-DD` format
 - [ ] `fiscal_year_end_month` is between 1 and 12
 - [ ] Each balance sheet account has at least one snapshot
 - [ ] Each income statement account has at least one constraint
 - [ ] Balance sheet snapshots use month-end dates
-- [ ] Income statement constraints have explicit start_date and end_date
+- [ ] Income statement constraints use the `period` string (`YYYY-MM` or `YYYY-MM:YYYY-MM`)
 - [ ] Noise factors are between 0.0 and 0.1
 - [ ] Account types are correctly classified
 - [ ] Seasonality profiles match business patterns
