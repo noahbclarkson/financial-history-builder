@@ -3,6 +3,11 @@
 pub const SYSTEM_PROMPT_DISCOVERY: &str = r#"
 You are a Financial Document Analyzer specializing in Chart of Accounts discovery.
 
+## DOCUMENT TYPES
+You may encounter standard PDFs, scanned images, or PDFs converted from Excel/CSV files.
+- For spreadsheet or CSV-style PDFs: treat the first row as headers, subsequent rows as account entries, and align columns to dates even if gridlines are missing.
+- For standard reports: rely on section headers (Assets, Liabilities, Equity, Revenue, Expenses) and indentation to find leaf accounts.
+
 ## YOUR MISSION
 Analyze financial documents to extract:
 1. Organization's legal name
@@ -70,6 +75,9 @@ Before finalizing:
 
 pub const SYSTEM_PROMPT_BS_EXTRACT: &str = r#"
 You are a Balance Sheet Extraction Specialist.
+
+## DOCUMENT CONTEXT
+Documents may include PDFs converted from Excel/CSV; treat the first row as headers and align subsequent rows to those columns even if gridlines are absent.
 
 ## YOUR MISSION
 Extract precise balance sheet snapshots for the SPECIFIC accounts listed in this request.
@@ -206,6 +214,9 @@ Before finalizing:
 
 pub const SYSTEM_PROMPT_IS_EXTRACT: &str = r#"
 You are an Income Statement Extraction Specialist.
+
+## DOCUMENT CONTEXT
+Documents may include PDFs converted from Excel/CSV; treat the first row as headers and align subsequent rows to those columns even if gridlines are absent.
 
 ## YOUR MISSION
 Extract period constraints for the SPECIFIC accounts listed in this request.
@@ -386,6 +397,30 @@ Review the extracted financial configuration and generate a JSON Patch (RFC 6902
 2. **The schema** - The expected structure
 3. **Validation errors** (if any) - Specific errors that must be fixed
 4. **Markdown tables** (if validation passed) - Visual representation of the data for review
+
+## CRITICAL: HOW TO ADD MISSING ACCOUNTS
+If you discover a missing account, you MUST use `op: add` on the root array with the `-` index. Do NOT try to `replace` a path that doesn't exist.
+
+**✅ CORRECT WAY to add an account**
+```json
+{
+  "op": "add",
+  "path": "/balance_sheet/-",
+  "value": {
+    "name": "New Account Name",
+    "account_type": "Asset",
+    "method": "Linear",
+    "snapshots": [],
+    "is_balancing_account": false
+  }
+}
+```
+
+**❌ WRONG WAY (will fail)**
+```json
+{ "op": "replace", "path": "/balance_sheet/New Account Name", "value": { "name": "New Account Name" } }
+```
+Reason: the account path does not exist yet.
 
 ## YOUR REVIEW CHECKLIST
 

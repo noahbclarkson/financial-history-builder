@@ -129,18 +129,24 @@ pub(crate) struct Candidate {
     pub finish_reason: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum ExtractionEvent {
     Starting,
     Uploading { filename: String },
+    // Discovery Phase
     Step1Discovery,
+    // Extraction Phase
     Step2Extraction,
+    // Assembly Phase
     Step3Assembly,
     DraftingResponse,
     ProcessingResponse,
+    // Validation Phase
     Validating { attempt: usize },
     CorrectionNeeded { reason: String },
     Retry { attempt: usize, error: String },
+    // Final States
     Success,
     Failed { reason: String },
 }

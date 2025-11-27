@@ -354,94 +354,83 @@ impl FinancialExtractor {
         progress: &Option<Sender<ExtractionEvent>>,
     ) -> Result<FinancialHistoryConfig> {
         let max_fix_attempts = 5;
-        let mut quality_check_completed = false;
+        let mut last_patch_errors: Vec<String> = Vec::new();
 
         for attempt in 1..=max_fix_attempts {
             self.send_event(progress, ExtractionEvent::Validating { attempt })
                 .await;
 
-            // Check for validation errors (Math & Source fields only)
-            let validation_error = validate_financial_logic(&config).err();
+            // 1. Check for logical validation errors
+            let logic_error = validate_financial_logic(&config).err();
 
-            // ALWAYS run final quality check at least once, even if validation passed
-            let should_run_patch = validation_error.is_some() || !quality_check_completed;
+            // 2. Check if we have previous patch application errors
+            let has_patch_errors = !last_patch_errors.is_empty();
 
-            if should_run_patch {
-                // Get the patch from the model
-                let patch_result = self
-                    .request_quality_patch(&config, documents, validation_error.as_deref(), attempt)
-                    .await;
+            // Determine if we need to run a fix cycle
+            if logic_error.is_none() && !has_patch_errors {
+                if attempt == 1 {
+                    // Even if perfect, run one quality check pass to catch duplicates/anomalies
+                } else {
+                    // We fixed everything, return
+                    return Ok(config);
+                }
+            }
 
-                match patch_result {
-                    Ok(patch_json) => {
-                        // Try to parse and apply the patch
-                        match self.apply_patch(&mut config, &patch_json, attempt) {
-                            Ok(true) => {
-                                // Patch applied successfully, continue to next iteration
-                                eprintln!("✓ Applied quality patch (attempt {})", attempt);
-                                quality_check_completed = true;
-                                continue;
-                            }
-                            Ok(false) => {
-                                // Empty patch - config is perfect
-                                eprintln!("✓ No changes needed - config validated");
+            // 3. Request Patch
+            let patch_result = self
+                .request_quality_patch(
+                    &config,
+                    documents,
+                    logic_error.as_deref(),
+                    if has_patch_errors {
+                        Some(&last_patch_errors)
+                    } else {
+                        None
+                    },
+                    attempt,
+                )
+                .await;
 
-                                // Final validation check
-                                if let Err(e) = validate_financial_logic(&config) {
-                                    return Err(FinancialHistoryError::ExtractionFailed(format!(
-                                        "Final validation failed: {}",
-                                        e
-                                    )));
-                                }
+            match patch_result {
+                Ok(patch_json) => {
+                    // 4. Apply Patch Sequentially
+                    let (any_applied, new_errors) =
+                        self.apply_patch_sequentially(&mut config, &patch_json, attempt)?;
 
-                                return Ok(config);
-                            }
-                            Err(e) => {
-                                eprintln!(
-                                    "⚠️ Patch application failed (attempt {}): {}",
-                                    attempt, e
-                                );
-
-                                if attempt == max_fix_attempts {
-                                    return Err(FinancialHistoryError::ExtractionFailed(format!(
-                                        "Failed to apply validation patch: {}",
-                                        e
-                                    )));
-                                }
-
-                                continue;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "⚠️ Failed to get quality patch (attempt {}): {}",
-                            attempt, e
-                        );
-
-                        if attempt == max_fix_attempts {
-                            // If we still have validation errors, fail
-                            if let Some(err) = validation_error {
-                                return Err(FinancialHistoryError::ExtractionFailed(format!(
-                                    "Validation failed: {}",
-                                    err
-                                )));
-                            }
-                            // No validation errors, just couldn't get patch - return config as is
+                    if !new_errors.is_empty() {
+                        self.send_event(
+                            progress,
+                            ExtractionEvent::CorrectionNeeded {
+                                reason: format!("{} patch operations failed", new_errors.len()),
+                            },
+                        )
+                        .await;
+                    } else if any_applied {
+                        self.send_event(
+                            progress,
+                            ExtractionEvent::CorrectionNeeded {
+                                reason: "Applied quality improvements".to_string(),
+                            },
+                        )
+                        .await;
+                    } else if attempt > 1 {
+                        // No changes made in a fix loop -> we are stuck or done
+                        if logic_error.is_none() {
                             return Ok(config);
                         }
+                    }
 
-                        // Continue to next attempt (retry)
-                        continue;
+                    last_patch_errors = new_errors;
+                }
+                Err(e) => {
+                    eprintln!("⚠️ Failed to get quality patch: {}", e);
+                    if attempt == max_fix_attempts {
+                        return Ok(config); // Return what we have
                     }
                 }
-            } else {
-                // No validation errors and quality check already completed - we're done
-                return Ok(config);
             }
         }
 
-        // Shouldn't reach here, but if we do, return the config
         Ok(config)
     }
 
@@ -450,6 +439,7 @@ impl FinancialExtractor {
         config: &FinancialHistoryConfig,
         documents: &[RemoteDocument],
         validation_error: Option<&str>,
+        patch_errors: Option<&[String]>,
         attempt: usize,
     ) -> Result<String> {
         let schema = FinancialHistoryConfig::get_gemini_response_schema()
@@ -473,10 +463,22 @@ impl FinancialExtractor {
         // Inject Context sections
         if let Some(error) = validation_error {
             prompt.push_str(&format!(
-                "\n\n## 🔴 CRITICAL VALIDATION ERRORS\n\
+                "\n\n## 🔴 CRITICAL LOGIC ERRORS\n\
                 The following errors MUST be fixed via JSON Patch:\n\
                 ```\n{}\n```",
                 error
+            ));
+        }
+
+        if let Some(errors) = patch_errors {
+            prompt.push_str(&format!(
+                "\n\n## ⚠️ PREVIOUS PATCH ERRORS\nSome of your previous operations failed. \
+                It is likely you tried to modify an account that doesn't exist yet, or used an invalid path.\n\
+                **Errors:**\n```\n{}\n```\n\
+                **Instructions:**\n\
+                - If adding a NEW account, use `op: add` on the ROOT array (e.g. `/balance_sheet/-`), NOT `replace`.\n\
+                - Ensure account names in paths are exact.",
+                errors.join("\n")
             ));
         }
 
@@ -503,13 +505,15 @@ impl FinancialExtractor {
         ));
 
         if let Some(tbl) = tables {
-             prompt.push_str(&format!("\n\n## VISUAL REVIEW TABLES\n{}", tbl));
+            prompt.push_str(&format!("\n\n## VISUAL REVIEW TABLES\n{}", tbl));
         }
 
-        prompt.push_str("\n\n## YOUR TASK\n\
+        prompt.push_str(
+            "\n\n## YOUR TASK\n\
         Review the attached documents and the JSON above.\n\
         Generate a JSON Patch (RFC 6902) array to fix validation errors or data quality issues.\n\
-        Return ONLY a valid JSON array `[]`.");
+        Return ONLY a valid JSON array `[]`.",
+        );
 
         let messages = vec![Content::user_with_files(prompt, documents)];
 
@@ -528,196 +532,165 @@ impl FinancialExtractor {
         Ok(extract_first_json_array(&response))
     }
 
-    fn resolve_patch_paths(
+    /// Resolves JSON Pointer paths, specifically handling "Add New Account" logic
+    /// where the path uses a Name but the account doesn't exist yet.
+    fn resolve_patch_op(
         config: &FinancialHistoryConfig,
-        patch_ops: &mut [json_patch::PatchOperation],
+        op: &mut json_patch::PatchOperation,
     ) -> Result<()> {
         use json_patch::PatchOperation;
 
-        for op in patch_ops {
-            let path_str = match op {
-                PatchOperation::Add(add_op) => add_op.path.to_string(),
-                PatchOperation::Remove(remove_op) => remove_op.path.to_string(),
-                PatchOperation::Replace(replace_op) => replace_op.path.to_string(),
-                PatchOperation::Move(move_op) => move_op.path.to_string(),
-                PatchOperation::Copy(copy_op) => copy_op.path.to_string(),
-                PatchOperation::Test(test_op) => test_op.path.to_string(),
-            };
+        let path_str = match op {
+            PatchOperation::Add(o) => &mut o.path,
+            PatchOperation::Remove(o) => &mut o.path,
+            PatchOperation::Replace(o) => &mut o.path,
+            PatchOperation::Move(o) => &mut o.path,
+            PatchOperation::Copy(o) => &mut o.path,
+            PatchOperation::Test(o) => &mut o.path,
+        };
 
-            if !path_str.starts_with('/') {
-                continue;
-            }
+        let path_string = path_str.to_string();
+        if !path_string.starts_with('/') {
+            return Ok(());
+        }
 
-            let parts: Vec<&str> = path_str.split('/').collect();
-            if parts.len() < 3 {
-                continue;
-            }
+        let parts: Vec<&str> = path_string.split('/').collect();
+        if parts.len() < 3 {
+            return Ok(());
+        }
 
-            let section = parts[1];
-            let identifier = parts[2];
+        let section = parts[1];
+        let identifier = parts[2];
 
-            if identifier.parse::<usize>().is_ok() || identifier == "-" {
-                continue;
-            }
+        // If it's already an index or "-", leave it alone
+        if identifier.parse::<usize>().is_ok() || identifier == "-" {
+            return Ok(());
+        }
 
-            // Unescape JSON Pointer: ~1 → /, ~0 → ~
-            // IMPORTANT: Must unescape ~1 BEFORE ~0 to avoid double-unescaping
-            let account_name = identifier.replace("~1", "/").replace("~0", "~");
+        // Unescape JSON Pointer syntax (~1 -> /, ~0 -> ~)
+        let account_name = identifier.replace("~1", "/").replace("~0", "~");
 
-            let resolved_index = match section {
-                "balance_sheet" => config
-                    .balance_sheet
-                    .iter()
-                    .position(|a| a.name == account_name),
-                "income_statement" => config
-                    .income_statement
-                    .iter()
-                    .position(|a| a.name == account_name),
-                _ => None,
-            };
+        match section {
+            "balance_sheet" | "income_statement" => {}
+            _ => return Ok(()),
+        }
 
-            if let Some(idx) = resolved_index {
-                let mut new_parts = parts.clone();
-                let idx_str = idx.to_string();
-                new_parts[2] = &idx_str;
+        // Find index
+        let found_idx = if section == "balance_sheet" {
+            config
+                .balance_sheet
+                .iter()
+                .position(|a| a.name == account_name)
+        } else {
+            config
+                .income_statement
+                .iter()
+                .position(|a| a.name == account_name)
+        };
 
-                let new_path = new_parts.join("/");
-                let new_path_parsed = new_path.parse().map_err(|e| {
-                    FinancialHistoryError::ExtractionFailed(format!("Failed to rewrite patch path: {}", e))
-                })?;
-
-                match op {
-                    PatchOperation::Add(add_op) => add_op.path = new_path_parsed,
-                    PatchOperation::Remove(remove_op) => remove_op.path = new_path_parsed,
-                    PatchOperation::Replace(replace_op) => replace_op.path = new_path_parsed,
-                    PatchOperation::Move(move_op) => move_op.path = new_path_parsed,
-                    PatchOperation::Copy(copy_op) => copy_op.path = new_path_parsed,
-                    PatchOperation::Test(test_op) => test_op.path = new_path_parsed,
-                }
-            } else {
-                // Account not found - try fuzzy match to provide helpful error
-                eprintln!("⚠️ Patch Error: Account '{}' not found in {}", account_name, section);
-                eprintln!("   Original path: {}", identifier);
-
-                // Try to find similar account names
-                let similar: Vec<String> = match section {
-                    "balance_sheet" => config
-                        .balance_sheet
-                        .iter()
-                        .filter(|a| {
-                            let name_lower = a.name.to_lowercase();
-                            let search_lower = account_name.to_lowercase();
-                            name_lower.contains(&search_lower) || search_lower.contains(&name_lower)
-                        })
-                        .map(|a| a.name.clone())
-                        .take(3)
-                        .collect(),
-                    "income_statement" => config
-                        .income_statement
-                        .iter()
-                        .filter(|a| {
-                            let name_lower = a.name.to_lowercase();
-                            let search_lower = account_name.to_lowercase();
-                            name_lower.contains(&search_lower) || search_lower.contains(&name_lower)
-                        })
-                        .map(|a| a.name.clone())
-                        .take(3)
-                        .collect(),
-                    _ => vec![],
-                };
-
-                if !similar.is_empty() {
-                    eprintln!("   Similar accounts found:");
-                    for name in similar {
-                        eprintln!("     - \"{}\"", name);
+        if let Some(idx) = found_idx {
+            // Account exists: Replace name with index
+            let mut new_parts = parts.clone();
+            let idx_str = idx.to_string();
+            new_parts[2] = &idx_str;
+            *path_str = new_parts.join("/").parse().map_err(|e| {
+                FinancialHistoryError::ExtractionFailed(format!(
+                    "Failed to rewrite patch path: {}",
+                    e
+                ))
+            })?;
+        } else {
+            // Account DOES NOT exist
+            match op {
+                PatchOperation::Add(_) => {
+                    // If adding to a missing account at root, translate to append
+                    if parts.len() == 3 {
+                        let new_path = format!("/{}/-", section);
+                        *path_str = new_path.parse().map_err(|e| {
+                            FinancialHistoryError::ExtractionFailed(format!(
+                                "Failed to rewrite add path: {}",
+                                e
+                            ))
+                        })?;
+                    } else {
+                        return Err(FinancialHistoryError::ExtractionFailed(format!(
+                            "Account '{}' not found in {} for path {}",
+                            account_name, section, path_string
+                        )));
                     }
-                    eprintln!("   Hint: Use the EXACT account name. Only escape ~ as ~0 and / as ~1.");
-                    eprintln!("         Characters like #, @, $, %, &, * do NOT need escaping.");
+                }
+                _ => {
+                    // Trying to remove/replace/move a non-existent account -> Error
+                    return Err(FinancialHistoryError::ExtractionFailed(format!(
+                        "Account '{}' not found in {} (path: {})",
+                        account_name, section, path_string
+                    )));
                 }
             }
         }
         Ok(())
     }
 
-    fn apply_patch(
+    /// Applies patch operations sequentially.
+    /// Returns (true if any op succeeded, list of error messages for failed ops).
+    fn apply_patch_sequentially(
         &self,
         config: &mut FinancialHistoryConfig,
         patch_json: &str,
-        attempt: usize,
-    ) -> Result<bool> {
-        // Parse the patch as a JSON value first to check if it's empty
+        _attempt: usize,
+    ) -> Result<(bool, Vec<String>)> {
         let patch_value: serde_json::Value = serde_json::from_str(patch_json).map_err(|e| {
             FinancialHistoryError::ExtractionFailed(format!("Invalid JSON patch syntax: {}", e))
         })?;
 
-        // Check if it's an empty array
-        if let Some(arr) = patch_value.as_array() {
-            if arr.is_empty() {
-                // Empty patch - no changes needed
-                return Ok(false);
-            }
-        }
-
-        // Parse as PatchOperation array
-        let patch_ops: Vec<json_patch::PatchOperation> =
-            serde_json::from_value(patch_value).map_err(|e| {
+        let patch_ops: Vec<json_patch::PatchOperation> = serde_json::from_value(patch_value)
+            .map_err(|e| {
                 FinancialHistoryError::ExtractionFailed(format!("Invalid JSON patch format: {}", e))
             })?;
 
-        let total_ops = patch_ops.len();
-        eprintln!("📝 Applying {} patch operation(s)...", total_ops);
+        if patch_ops.is_empty() {
+            return Ok((false, Vec::new()));
+        }
 
-        // Apply each operation sequentially, re-resolving paths after each one
-        // This prevents index invalidation when earlier ops remove/add accounts
-        for (i, single_op) in patch_ops.into_iter().enumerate() {
-            // Resolve account names to indices for this specific operation
-            let mut ops_to_resolve = vec![single_op];
-            Self::resolve_patch_paths(config, &mut ops_to_resolve)?;
+        let mut errors = Vec::new();
+        let mut any_success = false;
 
-            // Convert config to JSON value
+        for mut op in patch_ops {
+            // 1. Try to resolve paths (Account Name -> Index)
+            // We do this FRESH every operation because indices shift if we remove/add items
+            if let Err(e) = Self::resolve_patch_op(config, &mut op) {
+                errors.push(format!("Path resolution error: {}", e));
+                continue;
+            }
+
+            // 2. Serialize current config to Value
             let mut config_value =
                 serde_json::to_value(&config).map_err(FinancialHistoryError::SerializationError)?;
 
-            // Apply this single operation
-            if let Err(e) = json_patch::patch(&mut config_value, &ops_to_resolve) {
-                eprintln!("⚠️ Operation {} failed: {}", i + 1, e);
-
-                // Log the failed operation
-                let failed_op_json = serde_json::to_string_pretty(&ops_to_resolve)
-                    .unwrap_or_else(|_| format!("{:?}", ops_to_resolve));
-                let _ = fs::write(
-                    format!("debug_failed_patch_op_{}_attempt_{}.json", i + 1, attempt),
-                    &failed_op_json,
-                );
-
-                return Err(FinancialHistoryError::ExtractionFailed(format!(
-                    "Failed to apply JSON patch operation {}/{}: {}. Operation dumped to debug file.",
-                    i + 1, total_ops, e
-                )));
+            // 3. Apply single operation
+            let single_patch = json_patch::Patch(vec![op.clone()]);
+            match json_patch::patch(&mut config_value, &single_patch) {
+                Ok(_) => {
+                    // 4. Deserialize back
+                    match serde_json::from_value(config_value) {
+                        Ok(new_config) => {
+                            *config = new_config;
+                            any_success = true;
+                        }
+                        Err(e) => {
+                            errors.push(format!("Result invalid against schema: {}", e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    // Capture the specific error (e.g., "path not found")
+                    let op_desc = serde_json::to_string(&op).unwrap_or_default();
+                    errors.push(format!("Op failed ({}): {}", op_desc, e));
+                }
             }
-
-            // Convert back to FinancialHistoryConfig
-            let new_config: FinancialHistoryConfig =
-                serde_json::from_value(config_value).map_err(|e| {
-                    FinancialHistoryError::ExtractionFailed(format!(
-                        "Patched JSON doesn't match schema after operation {}: {}",
-                        i + 1, e
-                    ))
-                })?;
-
-            // Update config for next iteration
-            *config = new_config;
-            eprintln!("  ✓ Operation {} applied successfully", i + 1);
         }
 
-        // Log the successful patch
-        let _ = fs::write(
-            format!("debug_applied_patch_attempt_{}.json", attempt),
-            patch_json,
-        );
-
-        eprintln!("✅ All patch operations applied successfully");
-        Ok(true)
+        Ok((any_success, errors))
     }
 
     async fn send_event(&self, sender: &Option<Sender<ExtractionEvent>>, event: ExtractionEvent) {
@@ -981,7 +954,8 @@ fn detect_suspicious_duplicates(cfg: &FinancialHistoryConfig) -> Option<String> 
                 let val = cents as f64 / 100.0;
                 warnings.push(format!(
                     "- Value {:.2} appears in multiple accounts: {}",
-                    val, unique_accounts.join(", ")
+                    val,
+                    unique_accounts.join(", ")
                 ));
             }
         }

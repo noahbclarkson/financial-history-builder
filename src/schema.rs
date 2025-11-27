@@ -161,13 +161,11 @@ pub struct BalanceSheetAccount {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PeriodConstraint {
-    #[schemars(
-        description = "Time period string. \
+    #[schemars(description = "Time period string. \
         For a SINGLE month, use 'YYYY-MM' (e.g. '2023-03'). \
         For a RANGE, use 'YYYY-MM:YYYY-MM' (e.g. '2023-01:2023-12'). \
         IMPORTANT: Ranges are INCLUSIVE. '2023-03:2023-04' means the sum of March AND April. \
-        DO NOT use a range for a single month."
-    )]
+        DO NOT use a range for a single month.")]
     pub period: String,
 
     #[schemars(
