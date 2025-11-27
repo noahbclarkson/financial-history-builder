@@ -398,6 +398,42 @@ Review the extracted financial configuration and generate a JSON Patch (RFC 6902
 3. **Validation errors** (if any) - Specific errors that must be fixed
 4. **Markdown tables** (if validation passed) - Visual representation of the data for review
 
+## HANDLING DUPLICATE ACCOUNTS
+
+If you receive an error about "Duplicate account detected":
+
+1. **Analyze the data:** Do the duplicates contain different data (e.g., Jan-Jun in one, Jul-Dec in the other)?
+   - **YES (Different Data):** You must MERGE them. This usually requires adding the missing snapshots/constraints from one duplicate to the other, then removing the duplicate.
+   - **NO (Exact Copy):** Use `op: remove` to delete the duplicate account using its name in the path.
+   - **NO (Actually Different Accounts):** If they are actually different accounts (e.g., "Sales - Product A" vs "Sales - Product B") but you named them the same, use `op: replace` on the `/name` field of one account to rename it.
+
+2. **Merging Example:**
+   If "Cash at Bank" appears twice with different snapshots, merge them:
+   ```json
+   [
+     { "op": "add", "path": "/balance_sheet/Cash at Bank/snapshots/-", "value": {...missing snapshot...} },
+     { "op": "remove", "path": "/balance_sheet/Cash at Bank (duplicate name, second occurrence)" }
+   ]
+   ```
+   Note: When removing, you need to identify which duplicate to remove. Use the account name in the path, and our system will handle index resolution.
+
+3. **Removing Exact Duplicate Example:**
+   ```json
+   [
+     { "op": "remove", "path": "/income_statement/Interest Received" }
+   ]
+   ```
+   This will remove the LAST occurrence of the duplicate (due to BTreeMap last-write-wins behavior).
+
+4. **Renaming Example:**
+   ```json
+   [
+     { "op": "replace", "path": "/income_statement/Sales/name", "value": "Sales - Retail" }
+   ]
+   ```
+
+**IMPORTANT:** Account names must be unique within each section (balance_sheet and income_statement) to prevent React key collisions on the frontend.
+
 ## CRITICAL: HOW TO ADD MISSING ACCOUNTS
 If you discover a missing account, you MUST use `op: add` on the root array with the `-` index. Do NOT try to `replace` a path that doesn't exist.
 

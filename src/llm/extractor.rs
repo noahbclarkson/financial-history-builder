@@ -928,7 +928,29 @@ fn validate_financial_logic(cfg: &FinancialHistoryConfig) -> std::result::Result
         }
     }
 
-    // 2. Check Math (Keep this strict)
+    // 2. Check for Duplicate Names (NEW)
+    // React keys require unique names, and BTreeMap logic implies last-write-wins if duplicates exist.
+    let mut seen_bs = std::collections::HashSet::new();
+    for acc in &cfg.balance_sheet {
+        if !seen_bs.insert(&acc.name) {
+            return Err(format!(
+                "Duplicate Balance Sheet account detected: '{}'. Account names must be unique.",
+                acc.name
+            ));
+        }
+    }
+
+    let mut seen_is = std::collections::HashSet::new();
+    for acc in &cfg.income_statement {
+        if !seen_is.insert(&acc.name) {
+            return Err(format!(
+                "Duplicate Income Statement account detected: '{}'. Account names must be unique.",
+                acc.name
+            ));
+        }
+    }
+
+    // 3. Check Math (Keep this strict)
     match process_financial_history(cfg) {
         Ok(dense) => match verify_accounting_equation(cfg, &dense, 1.0) {
             Ok(_) => Ok(()),
