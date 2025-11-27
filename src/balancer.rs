@@ -202,6 +202,12 @@ impl<'a> AccountingBalancer<'a> {
         let mut cost_of_sales = 0.0;
         let mut operating_expense = 0.0;
 
+        // New accumulators for specific expense types
+        let mut interest = 0.0;
+        let mut depreciation = 0.0;
+        let mut shareholder_salaries = 0.0;
+        let mut income_tax = 0.0;
+
         for account in &self.config.income_statement {
             if let Some(series) = dense_data.get(&account.name) {
                 if let Some(point) = series.get(&date) {
@@ -210,13 +216,25 @@ impl<'a> AccountingBalancer<'a> {
                         AccountType::OtherIncome => other_income += point.value,
                         AccountType::CostOfSales => cost_of_sales += point.value,
                         AccountType::OperatingExpense => operating_expense += point.value,
+                        // Handle new types as expenses
+                        AccountType::Interest => interest += point.value,
+                        AccountType::Depreciation => depreciation += point.value,
+                        AccountType::ShareholderSalaries => shareholder_salaries += point.value,
+                        AccountType::IncomeTax => income_tax += point.value,
                         _ => {}
                     }
                 }
             }
         }
 
-        revenue + other_income - cost_of_sales - operating_expense
+        // Net Income = (Revenue + Other Income) - (All Expenses)
+        revenue + other_income
+            - cost_of_sales
+            - operating_expense
+            - interest
+            - depreciation
+            - shareholder_salaries
+            - income_tax
     }
 
     fn check_retained_earnings_rollforward(

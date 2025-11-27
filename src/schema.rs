@@ -43,6 +43,24 @@ pub enum AccountType {
     )]
     OtherIncome,
 
+    #[schemars(description = "Interest expense (finance costs) (Income Statement, debit balance)")]
+    Interest,
+
+    #[schemars(
+        description = "Depreciation and Amortisation expense (Income Statement, debit balance)"
+    )]
+    Depreciation,
+
+    #[schemars(
+        description = "Shareholder or Director salaries (distinct from standard wages) (Income Statement, debit balance)"
+    )]
+    ShareholderSalaries,
+
+    #[schemars(
+        description = "Income Tax Expense (Corporate Tax) (Income Statement, debit balance)"
+    )]
+    IncomeTax,
+
     #[schemars(
         description = "Resources owned by the company: cash, accounts receivable, inventory, equipment (Balance Sheet, debit balance)"
     )]
@@ -134,6 +152,12 @@ pub struct BalanceSheetAccount {
     )]
     pub name: String,
 
+    #[serde(default)]
+    #[schemars(
+        description = "The specific subcategory header this account appears under in the report (e.g., 'Current Assets', 'Non-Current Liabilities', 'Fixed Assets')."
+    )]
+    pub category: Option<String>,
+
     #[schemars(description = "The type of account (Asset, Liability, or Equity)")]
     pub account_type: AccountType,
 
@@ -191,6 +215,12 @@ pub struct IncomeStatementAccount {
         description = "The account name (e.g., 'Revenue', 'Salaries'). DO NOT extract 'Total Operating Expenses', 'Gross Profit', 'Net Income', or 'EBITDA'. Extraction should be granular - extract individual revenue and expense line items only."
     )]
     pub name: String,
+
+    #[serde(default)]
+    #[schemars(
+        description = "The specific section header this account appears under (e.g., 'Administrative Expenses', 'Marketing Costs')."
+    )]
+    pub category: Option<String>,
 
     #[schemars(
         description = "The type of account (Revenue, CostOfSales, OperatingExpense, or OtherIncome)"
@@ -434,6 +464,7 @@ mod tests {
             fiscal_year_end_month: 12,
             balance_sheet: vec![BalanceSheetAccount {
                 name: "Cash".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -453,6 +484,7 @@ mod tests {
             }],
             income_statement: vec![IncomeStatementAccount {
                 name: "Revenue".to_string(),
+                category: None,
                 account_type: AccountType::Revenue,
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![PeriodConstraint {

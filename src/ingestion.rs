@@ -30,6 +30,7 @@ pub fn convert_tb_to_config(
                     .entry(row.account_name.clone())
                     .or_insert_with(|| BalanceSheetAccount {
                         name: row.account_name.clone(),
+                        category: None,
                         account_type: row.account_type.clone(),
                         method: InterpolationMethod::Linear,
                         snapshots: Vec::new(),
@@ -51,6 +52,7 @@ pub fn convert_tb_to_config(
                     .entry(row.account_name.clone())
                     .or_insert_with(|| IncomeStatementAccount {
                         name: row.account_name.clone(),
+                        category: None,
                         account_type: row.account_type.clone(),
                         seasonality_profile: SeasonalityProfileId::Flat,
                         constraints: Vec::new(),

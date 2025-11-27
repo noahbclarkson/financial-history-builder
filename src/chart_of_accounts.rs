@@ -22,6 +22,10 @@ pub struct ChartOfAccounts {
     pub cost_of_sales: Vec<AccountEntry>,
     pub operating_expenses: Vec<AccountEntry>,
     pub other_income: Vec<AccountEntry>,
+    pub interest: Vec<AccountEntry>,
+    pub depreciation: Vec<AccountEntry>,
+    pub shareholder_salaries: Vec<AccountEntry>,
+    pub income_tax: Vec<AccountEntry>,
 }
 
 impl ChartOfAccounts {
@@ -33,6 +37,10 @@ impl ChartOfAccounts {
         let mut cost_of_sales = Vec::new();
         let mut operating_expenses = Vec::new();
         let mut other_income = Vec::new();
+        let mut interest = Vec::new();
+        let mut depreciation = Vec::new();
+        let mut shareholder_salaries = Vec::new();
+        let mut income_tax = Vec::new();
 
         for account in &config.balance_sheet {
             let entry = AccountEntry {
@@ -63,6 +71,11 @@ impl ChartOfAccounts {
                 AccountType::CostOfSales => cost_of_sales.push(entry),
                 AccountType::OperatingExpense => operating_expenses.push(entry),
                 AccountType::OtherIncome => other_income.push(entry),
+                // Map new types
+                AccountType::Interest => interest.push(entry),
+                AccountType::Depreciation => depreciation.push(entry),
+                AccountType::ShareholderSalaries => shareholder_salaries.push(entry),
+                AccountType::IncomeTax => income_tax.push(entry),
                 _ => {}
             }
         }
@@ -74,6 +87,10 @@ impl ChartOfAccounts {
         cost_of_sales.sort_by(|a, b| a.name.cmp(&b.name));
         operating_expenses.sort_by(|a, b| a.name.cmp(&b.name));
         other_income.sort_by(|a, b| a.name.cmp(&b.name));
+        interest.sort_by(|a, b| a.name.cmp(&b.name));
+        depreciation.sort_by(|a, b| a.name.cmp(&b.name));
+        shareholder_salaries.sort_by(|a, b| a.name.cmp(&b.name));
+        income_tax.sort_by(|a, b| a.name.cmp(&b.name));
 
         Self {
             organization_name: config.organization_name.clone(),
@@ -85,6 +102,10 @@ impl ChartOfAccounts {
             cost_of_sales,
             operating_expenses,
             other_income,
+            interest,
+            depreciation,
+            shareholder_salaries,
+            income_tax,
         }
     }
 
@@ -174,6 +195,34 @@ impl ChartOfAccounts {
             ));
         }
 
+        for account in &self.interest {
+            output.push_str(&format!(
+                "Interest,{},{:?},{}\n",
+                account.name, account.account_type, account.is_balancing_account
+            ));
+        }
+
+        for account in &self.depreciation {
+            output.push_str(&format!(
+                "Depreciation,{},{:?},{}\n",
+                account.name, account.account_type, account.is_balancing_account
+            ));
+        }
+
+        for account in &self.shareholder_salaries {
+            output.push_str(&format!(
+                "Shareholder Salaries,{},{:?},{}\n",
+                account.name, account.account_type, account.is_balancing_account
+            ));
+        }
+
+        for account in &self.income_tax {
+            output.push_str(&format!(
+                "Income Tax,{},{:?},{}\n",
+                account.name, account.account_type, account.is_balancing_account
+            ));
+        }
+
         output
     }
 
@@ -250,6 +299,30 @@ impl ChartOfAccounts {
         }
         output.push('\n');
 
+        output.push_str("### Interest\n\n");
+        for account in &self.interest {
+            output.push_str(&format!("- {}\n", account.name));
+        }
+        output.push('\n');
+
+        output.push_str("### Depreciation\n\n");
+        for account in &self.depreciation {
+            output.push_str(&format!("- {}\n", account.name));
+        }
+        output.push('\n');
+
+        output.push_str("### Shareholder Salaries\n\n");
+        for account in &self.shareholder_salaries {
+            output.push_str(&format!("- {}\n", account.name));
+        }
+        output.push('\n');
+
+        output.push_str("### Income Tax\n\n");
+        for account in &self.income_tax {
+            output.push_str(&format!("- {}\n", account.name));
+        }
+        output.push('\n');
+
         output
     }
 
@@ -261,6 +334,10 @@ impl ChartOfAccounts {
             + self.cost_of_sales.len()
             + self.operating_expenses.len()
             + self.other_income.len()
+            + self.interest.len()
+            + self.depreciation.len()
+            + self.shareholder_salaries.len()
+            + self.income_tax.len()
     }
 
     pub fn get_balancing_account(&self) -> Option<&AccountEntry> {
@@ -272,6 +349,10 @@ impl ChartOfAccounts {
             .chain(self.cost_of_sales.iter())
             .chain(self.operating_expenses.iter())
             .chain(self.other_income.iter())
+            .chain(self.interest.iter())
+            .chain(self.depreciation.iter())
+            .chain(self.shareholder_salaries.iter())
+            .chain(self.income_tax.iter())
             .find(|a| a.is_balancing_account)
     }
 }
@@ -292,6 +373,7 @@ mod tests {
             fiscal_year_end_month: 12,
             balance_sheet: vec![BalanceSheetAccount {
                 name: "Cash".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![BalanceSheetSnapshot {
@@ -304,6 +386,7 @@ mod tests {
             }],
             income_statement: vec![IncomeStatementAccount {
                 name: "Revenue".to_string(),
+                category: None,
                 account_type: AccountType::Revenue,
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![PeriodConstraint {
@@ -334,6 +417,7 @@ mod tests {
             fiscal_year_end_month: 12,
             balance_sheet: vec![BalanceSheetAccount {
                 name: "Cash".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![BalanceSheetSnapshot {
@@ -362,6 +446,7 @@ mod tests {
             fiscal_year_end_month: 12,
             balance_sheet: vec![BalanceSheetAccount {
                 name: "Cash".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![BalanceSheetSnapshot {

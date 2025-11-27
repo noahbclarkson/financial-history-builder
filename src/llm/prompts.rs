@@ -167,12 +167,21 @@ Set `noise` based on account stability:
 - **Liability**: Payables, Loans, Accrued Expenses
 - **Equity**: Share Capital, Retained Earnings, Reserves
 
+### 8. Category Field (Optional but Recommended)
+If the document shows section headers or subcategories for accounts, populate the `category` field:
+- Extract the EXACT header text as it appears in the document
+- Common examples:
+  - Balance Sheet: "Current Assets", "Fixed Assets", "Non-Current Assets", "Current Liabilities", "Non-Current Liabilities"
+  - Income Statement: "Administrative Expenses", "Marketing Costs", "Operating Revenue", "Cost of Sales"
+- If no clear section header exists, you may omit this field (it will default to null)
+
 ## EXAMPLE OUTPUT STRUCTURE
 ```json
 {
   "balance_sheet": [
     {
       "name": "Cash at Bank",
+      "category": "Current Assets",
       "account_type": "Asset",
       "method": "Curve",
       "snapshots": [
@@ -337,10 +346,20 @@ Set `noise` based on account variability:
 - `0.05`: High variability (revenue, commission-based expenses)
 
 ### 8. Account Type Classification
-- **Revenue**: Sales, Service Fees, Interest Income
+- **Revenue**: Sales, Service Fees
 - **CostOfSales**: Direct materials, Direct labor, Manufacturing overhead
-- **OperatingExpense**: Salaries, Rent, Marketing, Utilities, Depreciation
-- **OtherIncome**: Interest Income, FX Gains, Asset Sale Gains
+- **OperatingExpense**: General operating expenses, Rent, Marketing, Utilities (NOT depreciation or salaries to shareholders)
+- **OtherIncome**: FX Gains, Asset Sale Gains, Investment Income (non-operating)
+- **Interest**: Interest paid on loans, overdrafts, or other finance costs
+- **Depreciation**: Depreciation and Amortisation expense
+- **ShareholderSalaries**: Salaries paid specifically to owners, directors, or shareholders (distinct from regular employee wages)
+- **IncomeTax**: Corporate Income Tax expense
+
+### 9. Category Field (Optional but Recommended)
+If the document shows section headers or expense categories, populate the `category` field:
+- Extract the EXACT header text as it appears in the document
+- Common examples: "Administrative Expenses", "Marketing Costs", "Selling Expenses", "Finance Costs", "Cost of Sales"
+- If no clear section header exists, you may omit this field (it will default to null)
 
 ## EXAMPLE OUTPUT STRUCTURE
 ```json
@@ -348,6 +367,7 @@ Set `noise` based on account variability:
   "income_statement": [
     {
       "name": "Revenue",
+      "category": "Operating Revenue",
       "account_type": "Revenue",
       "seasonality": "Flat",
       "constraints": [
@@ -515,6 +535,19 @@ Since data was extracted in batches, check for:
 - **Duplicate Value assignment**: The exact same monetary value appearing in two different accounts (possible double-counting). Flag this for correction.
 - **Similar Account Names**: Pairs like "Office Expenses" vs. "Office Supplies" with similar data. Suggest merge/remove via patch.
 - **Lost Accounts**: Compare against the discovery lists provided in context. If a discovered account is missing, add it back with a note.
+
+### 9. Category Name Consolidation (IMPORTANT)
+If accounts have `category` fields populated, review them for consistency:
+- **Similar Category Names**: Look for variations that represent the same category (e.g., "Current Assets" vs "Current Asset", "Operating Expenses" vs "Operating Expense", "Admin Expenses" vs "Administrative Expenses")
+- **Merge Strategy**: Standardize to the most formal/complete version:
+  - ✅ "Current Assets" (not "Current Asset")
+  - ✅ "Administrative Expenses" (not "Admin Expenses")
+  - ✅ "Non-Current Liabilities" (not "Long-term Liabilities" if both exist)
+- **Patch Example**: Use `replace` operations to standardize category names across accounts:
+  ```json
+  { "op": "replace", "path": "/balance_sheet/Inventory/category", "value": "Current Assets" }
+  ```
+- If multiple accounts have slightly different category names but refer to the same section header, choose ONE canonical name and update all accounts to use it
 
 ## JSON PATCH OPERATIONS (RFC 6902)
 
