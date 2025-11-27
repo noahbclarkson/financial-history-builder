@@ -540,16 +540,14 @@ impl FinancialExtractor {
     ) -> Result<()> {
         use json_patch::PatchOperation;
 
-        let path_str = match op {
-            PatchOperation::Add(o) => &mut o.path,
-            PatchOperation::Remove(o) => &mut o.path,
-            PatchOperation::Replace(o) => &mut o.path,
-            PatchOperation::Move(o) => &mut o.path,
-            PatchOperation::Copy(o) => &mut o.path,
-            PatchOperation::Test(o) => &mut o.path,
+        let path_string = match &op {
+            PatchOperation::Add(o) => o.path.to_string(),
+            PatchOperation::Remove(o) => o.path.to_string(),
+            PatchOperation::Replace(o) => o.path.to_string(),
+            PatchOperation::Move(o) => o.path.to_string(),
+            PatchOperation::Copy(o) => o.path.to_string(),
+            PatchOperation::Test(o) => o.path.to_string(),
         };
-
-        let path_string = path_str.to_string();
         if !path_string.starts_with('/') {
             return Ok(());
         }
@@ -593,12 +591,17 @@ impl FinancialExtractor {
             let mut new_parts = parts.clone();
             let idx_str = idx.to_string();
             new_parts[2] = &idx_str;
-            *path_str = new_parts.join("/").parse().map_err(|e| {
-                FinancialHistoryError::ExtractionFailed(format!(
-                    "Failed to rewrite patch path: {}",
-                    e
-                ))
+            let rewritten = new_parts.join("/").parse().map_err(|e| {
+                FinancialHistoryError::ExtractionFailed(format!("Failed to rewrite patch path: {}", e))
             })?;
+            match op {
+                PatchOperation::Add(o) => o.path = rewritten,
+                PatchOperation::Remove(o) => o.path = rewritten,
+                PatchOperation::Replace(o) => o.path = rewritten,
+                PatchOperation::Move(o) => o.path = rewritten,
+                PatchOperation::Copy(o) => o.path = rewritten,
+                PatchOperation::Test(o) => o.path = rewritten,
+            }
         } else {
             // Account DOES NOT exist
             match op {
@@ -606,12 +609,20 @@ impl FinancialExtractor {
                     // If adding to a missing account at root, translate to append
                     if parts.len() == 3 {
                         let new_path = format!("/{}/-", section);
-                        *path_str = new_path.parse().map_err(|e| {
+                        let rewritten = new_path.parse().map_err(|e| {
                             FinancialHistoryError::ExtractionFailed(format!(
                                 "Failed to rewrite add path: {}",
                                 e
                             ))
                         })?;
+                        match op {
+                            PatchOperation::Add(o) => o.path = rewritten,
+                            PatchOperation::Remove(_)
+                            | PatchOperation::Replace(_)
+                            | PatchOperation::Move(_)
+                            | PatchOperation::Copy(_)
+                            | PatchOperation::Test(_) => {}
+                        }
                     } else {
                         return Err(FinancialHistoryError::ExtractionFailed(format!(
                             "Account '{}' not found in {} for path {}",
