@@ -216,12 +216,6 @@ pub struct IncomeStatementAccount {
     )]
     pub name: String,
 
-    #[serde(default)]
-    #[schemars(
-        description = "The specific section header this account appears under (e.g., 'Administrative Expenses', 'Marketing Costs')."
-    )]
-    pub category: Option<String>,
-
     #[schemars(
         description = "The type of account (Revenue, CostOfSales, OperatingExpense, or OtherIncome)"
     )]
@@ -484,7 +478,6 @@ mod tests {
             }],
             income_statement: vec![IncomeStatementAccount {
                 name: "Revenue".to_string(),
-                category: None,
                 account_type: AccountType::Revenue,
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![PeriodConstraint {

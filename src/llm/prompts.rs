@@ -355,19 +355,12 @@ Set `noise` based on account variability:
 - **ShareholderSalaries**: Salaries paid specifically to owners, directors, or shareholders (distinct from regular employee wages)
 - **IncomeTax**: Corporate Income Tax expense
 
-### 9. Category Field (Optional but Recommended)
-If the document shows section headers or expense categories, populate the `category` field:
-- Extract the EXACT header text as it appears in the document
-- Common examples: "Administrative Expenses", "Marketing Costs", "Selling Expenses", "Finance Costs", "Cost of Sales"
-- If no clear section header exists, you may omit this field (it will default to null)
-
 ## EXAMPLE OUTPUT STRUCTURE
 ```json
 {
   "income_statement": [
     {
       "name": "Revenue",
-      "category": "Operating Revenue",
       "account_type": "Revenue",
       "seasonality": "Flat",
       "constraints": [

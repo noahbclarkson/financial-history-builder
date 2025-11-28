@@ -386,7 +386,6 @@ mod tests {
             }],
             income_statement: vec![IncomeStatementAccount {
                 name: "Revenue".to_string(),
-                category: None,
                 account_type: AccountType::Revenue,
                 seasonality_profile: SeasonalityProfileId::Flat,
                 constraints: vec![PeriodConstraint {
