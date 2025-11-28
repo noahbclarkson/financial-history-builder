@@ -39,10 +39,23 @@ impl FinancialExtractor {
         self.send_event(&progress, ExtractionEvent::Step2Extraction)
             .await;
 
-        // Prepare context for specific extractions
+        // Prepare context with the NORMALIZED DATES
+        let start_date_str = discovery
+            .forecast_start_date
+            .map(|d| d.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "Unknown (Extract all available)".to_string());
+
+        let end_date_str = discovery
+            .forecast_end_date
+            .map(|d| d.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+
         let org_ctx = format!(
-            "Organization: {}\nFY End Month: {}",
-            discovery.organization_name, discovery.fiscal_year_end_month
+            "Organization: {}\nFY End Month: {}\nGlobal Forecast Start Date: {}\nGlobal Forecast End Date: {}",
+            discovery.organization_name,
+            discovery.fiscal_year_end_month,
+            start_date_str,
+            end_date_str
         );
 
         let (bs_result, is_result) = try_join!(

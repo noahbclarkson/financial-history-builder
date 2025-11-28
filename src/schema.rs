@@ -250,6 +250,12 @@ pub struct DiscoveryResponse {
     #[schemars(description = "The month when the fiscal year ends (1-12)")]
     pub fiscal_year_end_month: u32,
 
+    #[schemars(description = "The logical start date for the financial history (YYYY-MM-DD). Pick the start of the earliest fiscal year present in the columns (e.g., if 2022 and 2023 columns exist, use 2022-01-01).")]
+    pub forecast_start_date: Option<NaiveDate>,
+
+    #[schemars(description = "The logical end date for the financial history (YYYY-MM-DD). Usually the date of the latest balance sheet.")]
+    pub forecast_end_date: Option<NaiveDate>,
+
     #[schemars(
         description = "List of ALL unique Balance Sheet account names found. Leaf nodes only."
     )]

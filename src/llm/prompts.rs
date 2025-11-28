@@ -12,12 +12,21 @@ You may encounter standard PDFs, scanned images, or PDFs converted from Excel/CS
 Analyze financial documents to extract:
 1. Organization's legal name
 2. Fiscal year end month (1-12)
-3. Complete list of Balance Sheet account names
-4. Complete list of Income Statement account names
+3. **Forecast Start & End Dates** (The time range covered by the documents)
+4. Complete list of Balance Sheet account names
+5. Complete list of Income Statement account names
 
 ## CRITICAL RULES - READ CAREFULLY
 
-### Account Name Extraction Rules
+### 1. Determining Forecast Start/End Dates (Normalization)
+Look at the column headers to determine the time range.
+- **Goal**: Select a start date where *most* P&L and Balance Sheet data is present.
+- **Logic**:
+  - If you see comparative columns for "2023" and "2022", the Start Date is the beginning of the 2022 Fiscal Year (e.g., `2022-01-01`).
+  - If you see "Year Ended Dec 31, 2023", the Start Date is `2023-01-01` (unless comparatives exist).
+  - **Reasoning**: We want to capture the earliest full historical period available to build a solid forecast base.
+
+### 2. Account Name Extraction Rules
 ✅ DO Extract:
 - LEAF ACCOUNTS ONLY (the most granular line items)
 - Individual asset accounts: "Cash at Bank", "Accounts Receivable", "Inventory - Raw Materials"
@@ -60,6 +69,8 @@ Analyze financial documents to extract:
 Return valid JSON matching the DiscoveryResponse schema:
 - `organization_name`: Exact legal name from the documents
 - `fiscal_year_end_month`: Integer 1-12
+- `forecast_start_date`: YYYY-MM-DD (Earliest logical fiscal start)
+- `forecast_end_date`: YYYY-MM-DD (Latest balance sheet date)
 - `balance_sheet_account_names`: Array of strings (leaf accounts only)
 - `income_statement_account_names`: Array of strings (leaf accounts only)
 
@@ -94,21 +105,26 @@ Extract precise balance sheet snapshots for the SPECIFIC accounts listed in this
 2. If you see data for an account NOT in this batch list, **IGNORE IT COMPLETELY**. Do not guess or map to a similar name.
 3. If an account in the list has no data, omit it from the output for this batch.
 
-### 2. Snapshot Extraction Strategy
-For EACH account, extract ALL available dates as snapshots:
+### 2. Snapshot Extraction & Normalization
+**Refer to the `Global Forecast Start Date` provided in the context.**
 
-**Common Snapshot Patterns:**
-- Year-end balances: December 31, 2023 / December 31, 2022
-- Opening balances: January 1, 2023 (if explicitly stated)
-- Mid-year balances: June 30, 2023 (if available)
-- Quarterly balances: March 31, June 30, September 30, December 31
+**Normalization Rule (Backfilling):**
+If an account (like Equity, Loans, or Fixed Assets) logically existed at the Start Date, but the document only provides a later snapshot:
+1. Create a "Backfill Snapshot" at the `Global Forecast Start Date`.
+2. Set its value equal to the *first actual snapshot* found (flatlining the value).
+3. Set `source.document` to the same ID as the first actual snapshot.
+4. Set `source.text` to `null` (ignore text for backfill).
 
-**CRITICAL: Opening Balance Rule**
-If you see comparative years (e.g., 2023 and 2022 columns):
-- Extract 2023-12-31 closing balance
-- Extract 2022-12-31 closing balance
-- The 2022-12-31 balance represents BOTH the 2022 closing AND 2023 opening
-- Do NOT create a separate 2023-01-01 snapshot UNLESS explicitly stated
+**Example:**
+- Context Start Date: `2022-01-01`
+- Document shows: "Equipment value at Dec 31, 2022 was $50k" (no earlier data).
+- **Action**: Extract TWO snapshots:
+  1. Date: `2022-01-01`, Value: $50k, Source: Doc ID (Backfill)
+  2. Date: `2022-12-31`, Value: $50k, Source: Doc ID (Actual)
+
+**Standard Snapshot Patterns:**
+- Extract all Year-end, Quarter-end, and Month-end balances available.
+- Ensure 2022 closing balances serve as 2023 opening balances if applicable.
 
 ### 3. Interpolation Method Selection
 Choose the method that best represents how the account changes:
@@ -242,12 +258,18 @@ Extract period constraints for the SPECIFIC accounts listed in this request.
 2. If you see a value for an account NOT in this batch list, **IGNORE IT COMPLETELY**. Do not guess or map to a similar name.
 3. If an account in the list has no data in the documents, omit it from the output for this batch.
 
-### 2. Period Constraint Strategy (CRITICAL DATE LOGIC)
-**Key Concept:** Extract ALL overlapping periods. The engine will solve them hierarchically.
+### 2. Period Constraint Strategy
+**Refer to the `Global Forecast Start Date` provided in the context.**
+
+**Normalization Rule:**
+- **Do NOT generate data prior to the Global Forecast Start Date.**
+- If the document contains historical data older than this date (e.g., from 5 years ago), IGNORE IT. Focus on the range from Start Date to End Date.
 
 **Format:** Use the `period` string field.
 - **Single Month:** "YYYY-MM" (e.g., "2023-01")
 - **Range:** "YYYY-MM:YYYY-MM" (e.g., "2023-01:2023-12")
+
+**Key Concept:** Extract ALL overlapping periods. The engine will solve them hierarchically.
 
 **⛔ DATE RULES - DO NOT VIOLATE:**
 1. **RANGES ARE INCLUSIVE:** "2023-01:2023-03" means January, February, AND March.
