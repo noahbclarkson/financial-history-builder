@@ -94,6 +94,95 @@ impl FinancialExtractor {
         Ok(config)
     }
 
+    /// Refines an existing financial history based on a natural language instruction.
+    ///
+    /// This method allows you to make targeted changes to extracted data using natural
+    /// language instructions. The LLM will generate JSON Patch operations to fulfill
+    /// the instruction while maintaining data integrity.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The current financial history configuration to refine
+    /// * `documents` - Documents to provide as context to the LLM. You can:
+    ///   - Reuse the original extraction documents
+    ///   - Upload and pass additional supplementary documents
+    ///   - Use entirely different documents for major revisions
+    /// * `instruction` - Natural language instruction describing the desired changes
+    ///   Examples: "Add Marketing Expenses account with Q1-Q4 data from page 5"
+    ///   "Update Cash balance for Dec 2023 to $85,000"
+    ///   "Remove duplicate Revenue entries"
+    /// * `progress` - Optional channel for receiving progress events
+    ///
+    /// # Returns
+    ///
+    /// Returns the refined configuration with changes applied via JSON Patch operations.
+    /// All changes are validated against the schema and accounting constraints.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // Upload additional document with updated forecast
+    /// let updated_doc = client.upload_document("updated_forecast.pdf").await?;
+    /// let mut docs = original_documents.clone();
+    /// docs.push(updated_doc);
+    ///
+    /// // Refine the history with natural language instruction
+    /// let refined = extractor.refine_history(
+    ///     config,
+    ///     &docs,
+    ///     "Add Q1 2024 forecast data from the updated forecast document",
+    ///     Some(progress_tx)
+    /// ).await?;
+    /// ```
+    pub async fn refine_history(
+        &self,
+        config: FinancialHistoryConfig,
+        documents: &[RemoteDocument],
+        instruction: &str,
+        progress: Option<Sender<ExtractionEvent>>,
+    ) -> Result<FinancialHistoryConfig> {
+        self.send_event(
+            &progress,
+            ExtractionEvent::CorrectionNeeded {
+                reason: format!("Refining history: {}", instruction),
+            },
+        )
+        .await;
+
+        // Use the abstracted patch loop with a custom prompt strategy
+        self.run_patch_loop(
+            config,
+            documents,
+            &progress,
+            "Refinement",
+            |cfg, patch_errors| {
+                // Determine if we show tables (usually helpful for context)
+                let tables = generate_markdown_tables(cfg);
+
+                // Construct the prompt context
+                let mut context = format!(
+                    "## USER INSTRUCTION\n\
+                    The user wants to refine the data with the following instruction:\n\
+                    \"{}\"\n\n\
+                    ## VISUAL REVIEW TABLES\n{}",
+                    instruction, tables
+                );
+
+                if !patch_errors.is_empty() {
+                    context.push_str(&format!(
+                        "\n\n## ⚠️ PREVIOUS PATCH ERRORS\n\
+                        Your previous attempt to apply a patch failed with these errors:\n\
+                        ```\n{}\n```\n\
+                        Please adjust your JSON Pointer paths. Remember to use 'op: add' on root arrays if creating new accounts.",
+                        patch_errors.join("\n")
+                    ));
+                }
+
+                context
+            },
+        ).await
+    }
+
     // --- SUB-ROUTINES ---
 
     async fn run_discovery(
@@ -360,53 +449,112 @@ impl FinancialExtractor {
         }
     }
 
+    /// REFACTORED: Now uses the abstract `run_patch_loop`
     async fn validate_and_fix(
+        &self,
+        config: FinancialHistoryConfig,
+        documents: &[RemoteDocument],
+        progress: &Option<Sender<ExtractionEvent>>,
+    ) -> Result<FinancialHistoryConfig> {
+        self.run_patch_loop(
+            config,
+            documents,
+            progress,
+            "Validation",
+            |cfg, patch_errors| {
+                // 1. Check for logical validation errors
+                let logic_error = validate_financial_logic(cfg).err();
+
+                // 2. Check for suspicious duplicates (Soft check)
+                let duplicate_warning = detect_suspicious_duplicates(cfg);
+
+                // 3. Generate markdown tables if no validation errors
+                let tables = if logic_error.is_none() {
+                    Some(generate_markdown_tables(cfg))
+                } else {
+                    None
+                };
+
+                // Construct specific Validation Prompt
+                let mut context = String::new();
+
+                if let Some(error) = logic_error {
+                    context.push_str(&format!(
+                        "\n\n## 🔴 CRITICAL LOGIC ERRORS\n\
+                        The following errors MUST be fixed via JSON Patch:\n\
+                        ```\n{}\n```",
+                        error
+                    ));
+                }
+
+                if !patch_errors.is_empty() {
+                    context.push_str(&format!(
+                        "\n\n## ⚠️ PREVIOUS PATCH ERRORS\n\
+                        Some of your previous operations failed. \
+                        It is likely you tried to modify an account that doesn't exist yet, or used an invalid path.\n\
+                        **Errors:**\n```\n{}\n```\n\
+                        **Instructions:**\n\
+                        - If adding a NEW account, use `op: add` on the ROOT array (e.g. `/balance_sheet/-`), NOT `replace`.\n\
+                        - Ensure account names in paths are exact.",
+                        patch_errors.join("\n")
+                    ));
+                }
+
+                if let Some(dup_warn) = duplicate_warning {
+                    context.push_str(&format!(
+                        "\n\n## ⚠️ POTENTIAL DATA INTEGRITY ISSUES\n\
+                        We detected potentially suspicious duplicate values. \
+                        Please verify against the attached documents if these are correct or double-counting:\n\
+                        ```\n{}\n```\n\
+                        If these are valid (e.g. coincidentally same value), ignore them. \
+                        If they are errors, remove the duplicate constraint via patch.",
+                        dup_warn
+                    ));
+                }
+
+                if let Some(tbl) = tables {
+                    context.push_str(&format!("\n\n## VISUAL REVIEW TABLES\n{}", tbl));
+                }
+
+                context
+            }
+        ).await
+    }
+
+    /// ABSTRACTED LOOP: Handles the "Prompt -> Patch -> Apply -> Retry" cycle
+    async fn run_patch_loop<F>(
         &self,
         mut config: FinancialHistoryConfig,
         documents: &[RemoteDocument],
         progress: &Option<Sender<ExtractionEvent>>,
-    ) -> Result<FinancialHistoryConfig> {
+        label: &str,
+        context_generator: F,
+    ) -> Result<FinancialHistoryConfig>
+    where F: Fn(&FinancialHistoryConfig, &[String]) -> String
+    {
         let max_fix_attempts = 5;
         let mut last_patch_errors: Vec<String> = Vec::new();
 
         for attempt in 1..=max_fix_attempts {
-            self.send_event(progress, ExtractionEvent::Validating { attempt })
-                .await;
+            self.send_event(progress, ExtractionEvent::Validating { attempt }).await;
 
-            // 1. Check for logical validation errors
-            let logic_error = validate_financial_logic(&config).err();
+            // 1. Generate the specific context (Validation errors OR User Instruction)
+            let specific_context = context_generator(&config, &last_patch_errors);
 
-            // 2. Check if we have previous patch application errors
-            let has_patch_errors = !last_patch_errors.is_empty();
-
-            // Determine if we need to run a fix cycle
-            if logic_error.is_none() && !has_patch_errors {
-                if attempt == 1 {
-                    // Even if perfect, run one quality check pass to catch duplicates/anomalies
-                } else {
-                    // We fixed everything, return
-                    return Ok(config);
-                }
-            }
-
-            // 3. Request Patch
+            // 2. Request Patch
             let patch_result = self
-                .request_quality_patch(
+                .request_patch(
                     &config,
                     documents,
-                    logic_error.as_deref(),
-                    if has_patch_errors {
-                        Some(&last_patch_errors)
-                    } else {
-                        None
-                    },
+                    &specific_context,
                     attempt,
+                    label
                 )
                 .await;
 
             match patch_result {
                 Ok(patch_json) => {
-                    // 4. Apply Patch Sequentially
+                    // 3. Apply Patch Sequentially
                     let (any_applied, new_errors) =
                         self.apply_patch_sequentially(&mut config, &patch_json, attempt)?;
 
@@ -422,21 +570,19 @@ impl FinancialExtractor {
                         self.send_event(
                             progress,
                             ExtractionEvent::CorrectionNeeded {
-                                reason: "Applied quality improvements".to_string(),
+                                reason: format!("Applied {} improvements", label),
                             },
                         )
                         .await;
                     } else if attempt > 1 {
                         // No changes made in a fix loop -> we are stuck or done
-                        if logic_error.is_none() {
-                            return Ok(config);
-                        }
+                         return Ok(config);
                     }
 
                     last_patch_errors = new_errors;
                 }
                 Err(e) => {
-                    eprintln!("⚠️ Failed to get quality patch: {}", e);
+                    eprintln!("⚠️ Failed to get {} patch: {}", label, e);
                     if attempt == max_fix_attempts {
                         return Ok(config); // Return what we have
                     }
@@ -447,13 +593,14 @@ impl FinancialExtractor {
         Ok(config)
     }
 
-    async fn request_quality_patch(
+    /// Helper to generate the actual LLM request for a patch
+    async fn request_patch(
         &self,
         config: &FinancialHistoryConfig,
         documents: &[RemoteDocument],
-        validation_error: Option<&str>,
-        patch_errors: Option<&[String]>,
+        specific_context: &str,
         attempt: usize,
+        label: &str,
     ) -> Result<String> {
         let schema = FinancialHistoryConfig::get_gemini_response_schema()
             .map_err(FinancialHistoryError::SerializationError)?;
@@ -461,51 +608,11 @@ impl FinancialExtractor {
         let config_json = serde_json::to_string_pretty(config)
             .map_err(FinancialHistoryError::SerializationError)?;
 
-        // 1. Check for suspicious duplicates (Soft check)
-        let duplicate_warning = detect_suspicious_duplicates(config);
-
-        // 2. Generate markdown tables if no validation errors
-        let tables = if validation_error.is_none() {
-            Some(generate_markdown_tables(config))
-        } else {
-            None
-        };
-
+        // Base System Prompt for Patching
         let mut prompt = prompts::SYSTEM_PROMPT_VALIDATION.to_string();
 
-        // Inject Context sections
-        if let Some(error) = validation_error {
-            prompt.push_str(&format!(
-                "\n\n## 🔴 CRITICAL LOGIC ERRORS\n\
-                The following errors MUST be fixed via JSON Patch:\n\
-                ```\n{}\n```",
-                error
-            ));
-        }
-
-        if let Some(errors) = patch_errors {
-            prompt.push_str(&format!(
-                "\n\n## ⚠️ PREVIOUS PATCH ERRORS\nSome of your previous operations failed. \
-                It is likely you tried to modify an account that doesn't exist yet, or used an invalid path.\n\
-                **Errors:**\n```\n{}\n```\n\
-                **Instructions:**\n\
-                - If adding a NEW account, use `op: add` on the ROOT array (e.g. `/balance_sheet/-`), NOT `replace`.\n\
-                - Ensure account names in paths are exact.",
-                errors.join("\n")
-            ));
-        }
-
-        if let Some(dup_warn) = duplicate_warning {
-            prompt.push_str(&format!(
-                "\n\n## ⚠️ POTENTIAL DATA INTEGRITY ISSUES\n\
-                We detected potentially suspicious duplicate values. \
-                Please verify against the attached documents if these are correct or double-counting:\n\
-                ```\n{}\n```\n\
-                If these are valid (e.g. coincidentally same value), ignore them. \
-                If they are errors, remove the duplicate constraint via patch.",
-                dup_warn
-            ));
-        }
+        // Inject the specific context (Validation errors or User Instruction)
+        prompt.push_str(specific_context);
 
         prompt.push_str(&format!(
             "\n\n## CURRENT CONFIGURATION\n```json\n{}\n```",
@@ -517,14 +624,10 @@ impl FinancialExtractor {
             serde_json::to_string_pretty(&schema).unwrap_or_default()
         ));
 
-        if let Some(tbl) = tables {
-            prompt.push_str(&format!("\n\n## VISUAL REVIEW TABLES\n{}", tbl));
-        }
-
         prompt.push_str(
             "\n\n## YOUR TASK\n\
         Review the attached documents and the JSON above.\n\
-        Generate a JSON Patch (RFC 6902) array to fix validation errors or data quality issues.\n\
+        Generate a JSON Patch (RFC 6902) array to fulfill the requirements or fix errors.\n\
         Return ONLY a valid JSON array `[]`.",
         );
 
@@ -534,11 +637,11 @@ impl FinancialExtractor {
             .client
             .generate_content(
                 &self.model,
-                "You are a financial data auditor.",
+                "You are a financial data auditor and editor.",
                 messages,
                 None,
                 "application/json",
-                &format!("validation_patch_attempt_{}", attempt),
+                &format!("{}_patch_attempt_{}", label.to_lowercase(), attempt),
             )
             .await?;
 

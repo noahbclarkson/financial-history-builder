@@ -123,9 +123,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     // Await the extraction result
-    let config = extraction_handle.await??;
+    let mut config = extraction_handle.await??;
 
-    println!("\n✅ Final Configuration:");
+    println!("\n✅ Initial Extraction Complete:");
     println!("   Organization: {}", config.organization_name);
     println!("   Fiscal Year End: Month {}", config.fiscal_year_end_month);
     println!("   Balance Sheet Accounts: {}", config.balance_sheet.len());
@@ -133,6 +133,104 @@ async fn main() -> Result<(), Box<dyn Error>> {
         "   Income Statement Accounts: {}",
         config.income_statement.len()
     );
+
+    // DEMONSTRATION: Interactive Refinement Workflow
+    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("🔧 REFINEMENT WORKFLOW DEMONSTRATION");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("\nThe refine_history() method allows you to make targeted changes");
+    println!("to the extracted data using natural language instructions.");
+    println!("\nExample use cases:");
+    println!("  • 'Add a new account called Marketing Expenses with quarterly data'");
+    println!("  • 'Remove the duplicate Revenue entries from Q2 2023'");
+    println!("  • 'Update the Cash balance for December 2023 to $85,000'");
+    println!("  • 'Change the seasonality profile for Sales to RetailPeak'");
+
+    // Optional: Uncomment to enable interactive refinement
+    // print!("\n💬 Enter a refinement instruction (or press Enter to skip): ");
+    // std::io::Write::flush(&mut std::io::stdout())?;
+    // let mut user_instruction = String::new();
+    // std::io::stdin().read_line(&mut user_instruction)?;
+    // let user_instruction = user_instruction.trim();
+
+    // For this demo, we'll use a hardcoded example instruction
+    let demo_instruction = "Review all balance sheet and income statement accounts. \
+                            If you notice any data quality issues, unusual values, or \
+                            potential improvements, make the necessary corrections.";
+
+    println!("\n📝 Demo Instruction: \"{}\"", demo_instruction);
+    println!("\n🔄 Running refinement workflow...\n");
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // IMPORTANT: Document Handling in Refinement
+    // ═══════════════════════════════════════════════════════════════════════════
+    // You have multiple options for which documents to pass to refine_history():
+    //
+    // 1. REUSE ORIGINAL DOCUMENTS (most common):
+    //    Pass the same documents used during extraction
+    let refine_docs = documents.clone();
+
+    // 2. ADD SUPPLEMENTARY DOCUMENTS (for additional context):
+    //    Upload new PDFs that provide extra information for refinement
+    //    Example (commented out):
+    //    let supplementary_path = Path::new("examples/documents/updated_forecast.pdf");
+    //    if supplementary_path.exists() {
+    //        let supplementary_doc = client.upload_document(supplementary_path).await?;
+    //        let mut combined_docs = documents.clone();
+    //        combined_docs.push(supplementary_doc);
+    //        refine_docs = combined_docs;
+    //    }
+    //
+    // 3. USE ENTIRELY DIFFERENT DOCUMENTS (for major revisions):
+    //    Upload and use completely new set of documents
+    //    Example (commented out):
+    //    let new_doc_path = Path::new("examples/documents/corrected_financials.pdf");
+    //    let new_doc = client.upload_document(new_doc_path).await?;
+    //    refine_docs = vec![new_doc];
+    //
+    // The LLM will have access to ALL provided documents when generating patches.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Create a new channel for refinement progress
+    let (refine_tx, mut refine_rx) = mpsc::channel(32);
+
+    // Clone necessary values for the refinement task
+    let refine_extractor = FinancialExtractor::new(client.clone(), "gemini-2.5-flash-preview-09-2025");
+    let refine_instruction = demo_instruction.to_string();
+
+    // Spawn refinement in separate task
+    let refinement_handle = tokio::spawn(async move {
+        refine_extractor
+            .refine_history(config, &refine_docs, &refine_instruction, Some(refine_tx))
+            .await
+    });
+
+    // Monitor refinement progress
+    tokio::spawn(async move {
+        while let Some(event) = refine_rx.recv().await {
+            match event {
+                ExtractionEvent::Validating { attempt } => {
+                    println!("🔍 Analyzing and applying refinements (Attempt {})...", attempt);
+                }
+                ExtractionEvent::CorrectionNeeded { reason } => {
+                    println!("⚙️  {}", reason);
+                }
+                _ => {}
+            }
+        }
+    });
+
+    // Await refinement result
+    match refinement_handle.await? {
+        Ok(refined_config) => {
+            println!("\n✅ Refinement Complete!");
+            config = refined_config;
+        }
+        Err(e) => {
+            println!("\n⚠️  Refinement encountered an issue: {}", e);
+            println!("   Continuing with original configuration...");
+        }
+    }
 
     println!("\n⚙️  Running Densification Engine...");
     let dense_data = process_financial_history(&config)?;
