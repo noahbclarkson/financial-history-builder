@@ -66,6 +66,7 @@ pub mod chart_of_accounts;
 pub mod engine;
 pub mod error;
 pub mod ingestion;
+pub mod overrides;
 pub mod schema;
 pub mod seasonality;
 pub mod utils;
@@ -80,6 +81,7 @@ pub use chart_of_accounts::{AccountEntry, ChartOfAccounts};
 pub use engine::{process_config, Densifier};
 pub use error::{FinancialHistoryError, Result};
 pub use ingestion::*;
+pub use overrides::*;
 pub use schema::*;
 pub use seasonality::{get_profile_weights, rotate_weights_for_fiscal_year};
 pub use utils::*;
@@ -245,6 +247,7 @@ mod tests {
             balance_sheet: vec![
                 BalanceSheetAccount {
                     name: "Cash".to_string(),
+                    category: None,
                     account_type: AccountType::Asset,
                     method: InterpolationMethod::Linear,
                     snapshots: vec![
@@ -264,6 +267,7 @@ mod tests {
                 },
                 BalanceSheetAccount {
                     name: "Accounts Payable".to_string(),
+                    category: None,
                     account_type: AccountType::Liability,
                     method: InterpolationMethod::Linear,
                     snapshots: vec![
@@ -283,6 +287,7 @@ mod tests {
                 },
                 BalanceSheetAccount {
                     name: "Share Capital".to_string(),
+                    category: None,
                     account_type: AccountType::Equity,
                     method: InterpolationMethod::Step,
                     snapshots: vec![

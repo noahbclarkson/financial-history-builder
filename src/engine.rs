@@ -410,6 +410,7 @@ mod tests {
     fn test_balance_sheet_interpolation() {
         let account = BalanceSheetAccount {
             name: "Cash".to_string(),
+            category: None,
             account_type: AccountType::Asset,
             method: InterpolationMethod::Linear,
             snapshots: vec![
@@ -453,6 +454,7 @@ mod tests {
             fiscal_year_end_month: 12,
             balance_sheet: vec![BalanceSheetAccount {
                 name: "Cash".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![

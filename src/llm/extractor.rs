@@ -530,33 +530,54 @@ impl FinancialExtractor {
         label: &str,
         context_generator: F,
     ) -> Result<FinancialHistoryConfig>
-    where F: Fn(&FinancialHistoryConfig, &[String]) -> String
+    where
+        F: Fn(&FinancialHistoryConfig, &[String]) -> String,
     {
         let max_fix_attempts = 5;
         let mut last_patch_errors: Vec<String> = Vec::new();
 
         for attempt in 1..=max_fix_attempts {
-            self.send_event(progress, ExtractionEvent::Validating { attempt }).await;
+            self.send_event(progress, ExtractionEvent::Validating { attempt })
+                .await;
 
             // 1. Generate the specific context (Validation errors OR User Instruction)
             let specific_context = context_generator(&config, &last_patch_errors);
 
             // 2. Request Patch
             let patch_result = self
-                .request_patch(
-                    &config,
-                    documents,
-                    &specific_context,
-                    attempt,
-                    label
-                )
+                .request_patch(&config, documents, &specific_context, attempt, label)
                 .await;
 
             match patch_result {
                 Ok(patch_json) => {
                     // 3. Apply Patch Sequentially
-                    let (any_applied, new_errors) =
-                        self.apply_patch_sequentially(&mut config, &patch_json, attempt)?;
+                    let apply_result =
+                        self.apply_patch_sequentially(&mut config, &patch_json, attempt);
+
+                    let (any_applied, new_errors) = match apply_result {
+                        Ok(result) => result,
+                        Err(e) => {
+                            let err_msg = format!(
+                                "{} patch attempt {} could not be deserialized: {}",
+                                label, attempt, e
+                            );
+                            eprintln!("⚠️ {}", err_msg);
+                            self.send_event(
+                                progress,
+                                ExtractionEvent::Retry {
+                                    attempt,
+                                    error: err_msg.clone(),
+                                },
+                            )
+                            .await;
+
+                            last_patch_errors = vec![err_msg];
+                            if attempt == max_fix_attempts {
+                                return Ok(config);
+                            }
+                            continue;
+                        }
+                    };
 
                     if !new_errors.is_empty() {
                         self.send_event(
@@ -576,16 +597,20 @@ impl FinancialExtractor {
                         .await;
                     } else if attempt > 1 {
                         // No changes made in a fix loop -> we are stuck or done
-                         return Ok(config);
+                        return Ok(config);
                     }
 
                     last_patch_errors = new_errors;
                 }
                 Err(e) => {
-                    eprintln!("⚠️ Failed to get {} patch: {}", label, e);
+                    eprintln!(
+                        "⚠️ Failed to get {} patch (attempt {}): {}",
+                        label, attempt, e
+                    );
                     if attempt == max_fix_attempts {
                         return Ok(config); // Return what we have
                     }
+                    tokio::time::sleep(std::time::Duration::from_secs(2 * attempt as u64)).await;
                 }
             }
         }
@@ -708,7 +733,10 @@ impl FinancialExtractor {
             let idx_str = idx.to_string();
             new_parts[2] = &idx_str;
             let rewritten = new_parts.join("/").parse().map_err(|e| {
-                FinancialHistoryError::ExtractionFailed(format!("Failed to rewrite patch path: {}", e))
+                FinancialHistoryError::ExtractionFailed(format!(
+                    "Failed to rewrite patch path: {}",
+                    e
+                ))
             })?;
             match op {
                 PatchOperation::Add(o) => o.path = rewritten,
@@ -764,15 +792,21 @@ impl FinancialExtractor {
         &self,
         config: &mut FinancialHistoryConfig,
         patch_json: &str,
-        _attempt: usize,
+        attempt: usize,
     ) -> Result<(bool, Vec<String>)> {
         let patch_value: serde_json::Value = serde_json::from_str(patch_json).map_err(|e| {
-            FinancialHistoryError::ExtractionFailed(format!("Invalid JSON patch syntax: {}", e))
+            FinancialHistoryError::ExtractionFailed(format!(
+                "Invalid JSON patch syntax on attempt {}: {}",
+                attempt, e
+            ))
         })?;
 
         let patch_ops: Vec<json_patch::PatchOperation> = serde_json::from_value(patch_value)
             .map_err(|e| {
-                FinancialHistoryError::ExtractionFailed(format!("Invalid JSON patch format: {}", e))
+                FinancialHistoryError::ExtractionFailed(format!(
+                    "Invalid JSON patch format on attempt {}: {}",
+                    attempt, e
+                ))
             })?;
 
         if patch_ops.is_empty() {
@@ -1117,7 +1151,7 @@ fn detect_suspicious_duplicates(cfg: &FinancialHistoryConfig) -> Option<String> 
     }
 }
 
-fn extract_first_json_object(input: &str) -> String {
+pub fn extract_first_json_object(input: &str) -> String {
     let input = input.trim();
     let start_index = match input.find('{') {
         Some(i) => i,

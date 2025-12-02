@@ -38,3 +38,18 @@ reqwest = { version = "0.12.24", features = ["json", "stream", "multipart"] }
 tokio-util = { version = "0.7", features = ["io"] }
 mime_guess = "2.0"
 futures = "0.3"
+
+[[example]]
+name = "chat_with_docs"
+path = "examples/chat_with_docs.rs"
+required-features = ["gemini"]
+
+[[example]]
+name = "gemini_pdf_example"
+path = "examples/gemini_pdf_example.rs"
+required-features = ["gemini"]
+
+[[example]]
+name = "forecasting_workflow"
+path = "examples/forecasting_workflow.rs"
+required-features = ["gemini"]

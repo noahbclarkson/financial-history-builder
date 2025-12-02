@@ -61,6 +61,7 @@ fn test_comprehensive_retail_business() {
         balance_sheet: vec![
             BalanceSheetAccount {
                 name: "Cash at Bank".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Curve,
                 snapshots: vec![
@@ -85,6 +86,7 @@ fn test_comprehensive_retail_business() {
             },
             BalanceSheetAccount {
                 name: "Inventory".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -109,6 +111,7 @@ fn test_comprehensive_retail_business() {
             },
             BalanceSheetAccount {
                 name: "Accounts Receivable".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -133,6 +136,7 @@ fn test_comprehensive_retail_business() {
             },
             BalanceSheetAccount {
                 name: "Equipment".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Step,
                 snapshots: vec![
@@ -157,6 +161,7 @@ fn test_comprehensive_retail_business() {
             },
             BalanceSheetAccount {
                 name: "Accounts Payable".to_string(),
+                category: None,
                 account_type: AccountType::Liability,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -181,6 +186,7 @@ fn test_comprehensive_retail_business() {
             },
             BalanceSheetAccount {
                 name: "Bank Loan".to_string(),
+                category: None,
                 account_type: AccountType::Liability,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -205,6 +211,7 @@ fn test_comprehensive_retail_business() {
             },
             BalanceSheetAccount {
                 name: "Share Capital".to_string(),
+                category: None,
                 account_type: AccountType::Equity,
                 method: InterpolationMethod::Step,
                 snapshots: vec![
@@ -350,6 +357,7 @@ fn test_saas_startup() {
         balance_sheet: vec![
             BalanceSheetAccount {
                 name: "Cash".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -374,6 +382,7 @@ fn test_saas_startup() {
             },
             BalanceSheetAccount {
                 name: "Accounts Receivable".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -398,6 +407,7 @@ fn test_saas_startup() {
             },
             BalanceSheetAccount {
                 name: "Accounts Payable".to_string(),
+                category: None,
                 account_type: AccountType::Liability,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -422,6 +432,7 @@ fn test_saas_startup() {
             },
             BalanceSheetAccount {
                 name: "Deferred Revenue".to_string(),
+                category: None,
                 account_type: AccountType::Liability,
                 method: InterpolationMethod::Curve,
                 snapshots: vec![
@@ -446,6 +457,7 @@ fn test_saas_startup() {
             },
             BalanceSheetAccount {
                 name: "Share Capital".to_string(),
+                category: None,
                 account_type: AccountType::Equity,
                 method: InterpolationMethod::Step,
                 snapshots: vec![
@@ -594,6 +606,7 @@ fn test_hospitality_business() {
         balance_sheet: vec![
             BalanceSheetAccount {
                 name: "Cash".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Curve,
                 snapshots: vec![
@@ -618,6 +631,7 @@ fn test_hospitality_business() {
             },
             BalanceSheetAccount {
                 name: "Property & Equipment".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -637,6 +651,7 @@ fn test_hospitality_business() {
             },
             BalanceSheetAccount {
                 name: "Trade Payables".to_string(),
+                category: None,
                 account_type: AccountType::Liability,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -656,6 +671,7 @@ fn test_hospitality_business() {
             },
             BalanceSheetAccount {
                 name: "Mortgage".to_string(),
+                category: None,
                 account_type: AccountType::Liability,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -675,6 +691,7 @@ fn test_hospitality_business() {
             },
             BalanceSheetAccount {
                 name: "Owner's Equity".to_string(),
+                category: None,
                 account_type: AccountType::Equity,
                 method: InterpolationMethod::Step,
                 snapshots: vec![BalanceSheetSnapshot {
@@ -790,6 +807,7 @@ fn test_designated_balancing_account() {
         balance_sheet: vec![
             BalanceSheetAccount {
                 name: "Cash at Bank".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![BalanceSheetSnapshot {
@@ -802,6 +820,7 @@ fn test_designated_balancing_account() {
             },
             BalanceSheetAccount {
                 name: "Accounts Receivable".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -821,6 +840,7 @@ fn test_designated_balancing_account() {
             },
             BalanceSheetAccount {
                 name: "Accounts Payable".to_string(),
+                category: None,
                 account_type: AccountType::Liability,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -840,6 +860,7 @@ fn test_designated_balancing_account() {
             },
             BalanceSheetAccount {
                 name: "Share Capital".to_string(),
+                category: None,
                 account_type: AccountType::Equity,
                 method: InterpolationMethod::Step,
                 snapshots: vec![
@@ -904,6 +925,7 @@ fn test_retained_earnings_integrity_check() {
         balance_sheet: vec![
             BalanceSheetAccount {
                 name: "Cash".to_string(),
+                category: None,
                 account_type: AccountType::Asset,
                 method: InterpolationMethod::Linear,
                 snapshots: vec![
@@ -923,6 +945,7 @@ fn test_retained_earnings_integrity_check() {
             },
             BalanceSheetAccount {
                 name: "Retained Earnings".to_string(),
+                category: None,
                 account_type: AccountType::Equity,
                 method: InterpolationMethod::Step,
                 snapshots: vec![
@@ -973,6 +996,7 @@ fn test_hierarchical_constraints() {
         fiscal_year_end_month: 12,
         balance_sheet: vec![BalanceSheetAccount {
             name: "Cash".to_string(),
+            category: None,
             account_type: AccountType::Asset,
             method: InterpolationMethod::Linear,
             snapshots: vec![
@@ -1054,6 +1078,7 @@ fn test_quarterly_constraints() {
         fiscal_year_end_month: 12,
         balance_sheet: vec![BalanceSheetAccount {
             name: "Cash".to_string(),
+            category: None,
             account_type: AccountType::Asset,
             method: InterpolationMethod::Linear,
             snapshots: vec![

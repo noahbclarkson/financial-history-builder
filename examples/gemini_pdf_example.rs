@@ -195,7 +195,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (refine_tx, mut refine_rx) = mpsc::channel(32);
 
     // Clone necessary values for the refinement task
-    let refine_extractor = FinancialExtractor::new(client.clone(), "gemini-2.5-flash-preview-09-2025");
+    let refine_extractor =
+        FinancialExtractor::new(client.clone(), "gemini-2.5-flash-preview-09-2025");
     let refine_instruction = demo_instruction.to_string();
 
     // Spawn refinement in separate task
@@ -210,7 +211,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         while let Some(event) = refine_rx.recv().await {
             match event {
                 ExtractionEvent::Validating { attempt } => {
-                    println!("🔍 Analyzing and applying refinements (Attempt {})...", attempt);
+                    println!(
+                        "🔍 Analyzing and applying refinements (Attempt {})...",
+                        attempt
+                    );
                 }
                 ExtractionEvent::CorrectionNeeded { reason } => {
                     println!("⚙️  {}", reason);

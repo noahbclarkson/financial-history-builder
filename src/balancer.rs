@@ -312,6 +312,7 @@ mod tests {
             balance_sheet: vec![
                 BalanceSheetAccount {
                     name: "Cash".to_string(),
+                    category: None,
                     account_type: AccountType::Asset,
                     method: InterpolationMethod::Linear,
                     snapshots: vec![BalanceSheetSnapshot {
@@ -324,6 +325,7 @@ mod tests {
                 },
                 BalanceSheetAccount {
                     name: "Loan".to_string(),
+                    category: None,
                     account_type: AccountType::Liability,
                     method: InterpolationMethod::Linear,
                     snapshots: vec![BalanceSheetSnapshot {
@@ -336,6 +338,7 @@ mod tests {
                 },
                 BalanceSheetAccount {
                     name: "Retained Earnings".to_string(),
+                    category: None,
                     account_type: AccountType::Equity,
                     method: InterpolationMethod::Linear,
                     snapshots: vec![],
@@ -397,6 +400,7 @@ mod tests {
             balance_sheet: vec![
                 BalanceSheetAccount {
                     name: "Cash".to_string(),
+                    category: None,
                     account_type: AccountType::Asset,
                     method: InterpolationMethod::Linear,
                     snapshots: vec![],
@@ -405,6 +409,7 @@ mod tests {
                 },
                 BalanceSheetAccount {
                     name: "Loan".to_string(),
+                    category: None,
                     account_type: AccountType::Liability,
                     method: InterpolationMethod::Linear,
                     snapshots: vec![],
