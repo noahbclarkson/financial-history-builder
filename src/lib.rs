@@ -87,6 +87,7 @@ pub use seasonality::{get_profile_weights, rotate_weights_for_fiscal_year};
 pub use utils::*;
 
 use chrono::NaiveDate;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -134,13 +135,23 @@ impl FinancialHistoryProcessor {
         validate_config_integrity(config)?;
         validate_fiscal_year_end_month(config.fiscal_year_end_month)?;
 
+        info!(
+            "Processing financial history for organization: {}",
+            config.organization_name
+        );
+        debug!(
+            "Configuration contains {} balance sheet accounts and {} income statement accounts",
+            config.balance_sheet.len(),
+            config.income_statement.len()
+        );
+
         let mut dense_data = process_config(config)?;
 
         let verification = enforce_accounting_equation_new(config, &mut dense_data)?;
 
         if !verification.warnings.is_empty() {
             for warning in verification.warnings {
-                eprintln!("Warning: {}", warning);
+                debug!("Balancing adjustment details: {}", warning);
             }
         }
 

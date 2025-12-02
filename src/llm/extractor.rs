@@ -3,6 +3,7 @@ use crate::llm::{client::GeminiClient, prompts, types::*};
 use crate::schema::*;
 use crate::{process_financial_history, verify_accounting_equation};
 use futures::{future::try_join_all, try_join};
+use log::{error, warn};
 use std::collections::HashMap;
 use std::fs;
 use tokio::sync::mpsc::Sender;
@@ -210,7 +211,7 @@ impl FinancialExtractor {
         serde_json::from_str(&content).map_err(|e| {
             // Dump raw output on parse failure
             let _ = fs::write("debug_discovery_raw_output.json", &content);
-            eprintln!("❌ Failed to parse Discovery JSON. Raw output dumped to debug_discovery_raw_output.json");
+            error!("Failed to parse Discovery JSON. Raw output dumped to debug_discovery_raw_output.json");
             FinancialHistoryError::SerializationError(e)
         })
     }
@@ -279,8 +280,8 @@ impl FinancialExtractor {
                         serde_json::from_str(&content).map_err(|e| {
                             // Dump raw output on parse failure
                             let _ = fs::write("debug_balance_sheet_raw_output.json", &content);
-                            eprintln!(
-                                "❌ Failed to parse Balance Sheet JSON. Raw output dumped to debug_balance_sheet_raw_output.json"
+                            error!(
+                                "Failed to parse Balance Sheet JSON. Raw output dumped to debug_balance_sheet_raw_output.json"
                             );
                             FinancialHistoryError::SerializationError(e)
                         })?;
@@ -361,8 +362,8 @@ impl FinancialExtractor {
                         serde_json::from_str(&content).map_err(|e| {
                             // Dump raw output on parse failure
                             let _ = fs::write("debug_income_statement_raw_output.json", &content);
-                            eprintln!(
-                                "❌ Failed to parse Income Statement JSON. Raw output dumped to debug_income_statement_raw_output.json"
+                            error!(
+                                "Failed to parse Income Statement JSON. Raw output dumped to debug_income_statement_raw_output.json"
                             );
                             FinancialHistoryError::SerializationError(e)
                         })?;
@@ -410,7 +411,7 @@ impl FinancialExtractor {
                     return Ok(cleaned);
                 }
                 Err(e) => {
-                    eprintln!("⚠️ {} Attempt {} failed: {}", stage_name, attempt, e);
+                    warn!("{} attempt {} failed: {}", stage_name, attempt, e);
                     if attempt == max_retries {
                         return Err(e);
                     }
@@ -561,7 +562,7 @@ impl FinancialExtractor {
                                 "{} patch attempt {} could not be deserialized: {}",
                                 label, attempt, e
                             );
-                            eprintln!("⚠️ {}", err_msg);
+                            warn!("{}", err_msg);
                             self.send_event(
                                 progress,
                                 ExtractionEvent::Retry {
@@ -603,10 +604,7 @@ impl FinancialExtractor {
                     last_patch_errors = new_errors;
                 }
                 Err(e) => {
-                    eprintln!(
-                        "⚠️ Failed to get {} patch (attempt {}): {}",
-                        label, attempt, e
-                    );
+                    warn!("Failed to get {} patch (attempt {}): {}", label, attempt, e);
                     if attempt == max_fix_attempts {
                         return Ok(config); // Return what we have
                     }

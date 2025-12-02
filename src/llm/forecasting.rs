@@ -2,6 +2,7 @@ use crate::error::{FinancialHistoryError, Result};
 use crate::llm::{extract_first_json_object, Content, GeminiClient, RemoteDocument};
 use crate::overrides::{AccountModification, FinancialHistoryOverrides};
 use crate::schema::FinancialHistoryConfig;
+use log::warn;
 use schemars::schema_for;
 use serde_json::Value;
 use std::time::Duration;
@@ -181,16 +182,16 @@ Return a valid JSON object matching the `FinancialHistoryOverrides` schema.
                     match serde_json::from_str::<FinancialHistoryOverrides>(&cleaned_json) {
                         Ok(overrides) => return Ok(overrides),
                         Err(e) => {
-                            eprintln!(
-                                "⚠️ Forecasting overrides attempt {} failed to parse: {}",
+                            warn!(
+                                "Forecasting overrides attempt {} failed to parse: {}",
                                 attempt, e
                             );
                             if attempt == max_retries {
                                 // Last-ditch salvage: try to coerce partial JSON into overrides
                                 if let Ok(value) = serde_json::from_str::<Value>(&cleaned_json) {
                                     if let Some(overrides) = salvage_overrides_from_value(&value) {
-                                        eprintln!(
-                                            "⚠️ Salvaged forecasting overrides from partial JSON after parse failure."
+                                        warn!(
+                                            "Salvaged forecasting overrides from partial JSON after parse failure."
                                         );
                                         return Ok(overrides);
                                     }
@@ -202,7 +203,7 @@ Return a valid JSON object matching the `FinancialHistoryOverrides` schema.
                     }
                 }
                 Err(e) => {
-                    eprintln!("⚠️ Forecasting overrides attempt {} failed: {}", attempt, e);
+                    warn!("Forecasting overrides attempt {} failed: {}", attempt, e);
                     if attempt == max_retries {
                         return Err(e);
                     }

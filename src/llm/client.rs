@@ -1,5 +1,6 @@
 use crate::error::{FinancialHistoryError, Result};
 use crate::llm::types::*;
+use log::{error, warn};
 use reqwest::Client;
 use serde_json::json;
 use std::path::Path;
@@ -289,7 +290,7 @@ impl GeminiClient {
         // 3. Check finish reason
         if let Some(reason) = &first_candidate.finish_reason {
             if reason != "STOP" {
-                println!("⚠️  Finish Reason: {}", reason);
+                warn!("Gemini finish reason: {}", reason);
             }
             if reason == "SAFETY" || reason == "RECITATION" {
                 return Err(FinancialHistoryError::ExtractionFailed(format!(
@@ -307,8 +308,8 @@ impl GeminiClient {
                             .as_secs();
                         let filename = format!("debug_max_tokens_truncated_{}.json", timestamp);
                         let _ = std::fs::write(&filename, text);
-                        eprintln!(
-                            "❌ MAX_TOKENS error: Truncated response dumped to {}",
+                        error!(
+                            "MAX_TOKENS error: Truncated response dumped to {}",
                             filename
                         );
                     }
