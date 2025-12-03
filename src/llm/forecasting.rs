@@ -3,7 +3,6 @@ use crate::llm::{extract_first_json_object, Content, GeminiClient, RemoteDocumen
 use crate::overrides::{AccountModification, FinancialHistoryOverrides};
 use crate::schema::FinancialHistoryConfig;
 use log::warn;
-use schemars::schema_for;
 use serde_json::Value;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -84,8 +83,7 @@ impl ForecastingSetupAgent {
         documents: &[RemoteDocument],
         user_instruction: Option<&str>,
     ) -> Result<FinancialHistoryOverrides> {
-        // Schema and current state for the model.
-        let schema_json = schema_for!(FinancialHistoryOverrides);
+        let schema_json_value = FinancialHistoryOverrides::get_gemini_response_schema()?;
         let current_state = serde_json::to_string_pretty(current_config)?;
 
         let system_prompt = format!(
@@ -150,7 +148,6 @@ Return a valid JSON object matching the `FinancialHistoryOverrides` schema.
 
         let mut last_error: Option<String> = None;
         let max_retries = 5;
-        let schema_json_value = serde_json::to_value(schema_json)?;
 
         for attempt in 1..=max_retries {
             let mut prompt_with_context = user_prompt.clone();
