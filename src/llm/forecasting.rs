@@ -130,14 +130,22 @@ You must apply the following **Thought Process** to every account:
 
 ### 2. The "Invisible Accounts" Rule (NZ/AU Context)
 Forecasting requires accounts that may not appear in a simple P&L extract but are logically necessary.
-**You must inject these into `new_balance_sheet_accounts`:**
-- **GST Payable:** (Liability) Almost every business has this. Create it if missing. **ESTIMATE VALUES:** If the document doesn't explicitly state GST, estimate a reasonable closing balance (e.g. roughly 10-15% of an average month's revenue/expenses) or use a placeholder like $2,000. Do NOT leave as 0.0 unless the company is clearly exempt.
-- **Accounts Receivable:** (Asset) If there is Revenue, there is AR. **ESTIMATE:** If missing, estimate a value based on ~1 month of revenue.
-- **Accounts Payable:** (Liability) If there are Expenses, there is AP. **ESTIMATE:** If missing, estimate a value based on ~1 month of expenses.
-- **Current Year Earnings:** (Equity) This is CRITICAL. This account holds the current period's profit/loss before transfer to Retained Earnings. It MUST exist. Create it with a value of 0.0.
-- **Shareholder Current Account:** (Equity/Liability) If "Shareholder Salaries" appear in P&L, this account MUST exist in BS to offset the entry.
-- **Income Tax Payable:** (Liability) distinct from GST.
+
+**🚨 CRITICAL: Check for Existing Accounts First!**
+Before adding ANY account to `new_balance_sheet_accounts`, verify it doesn't already exist in the raw data. Only add accounts that are genuinely missing.
+
+**Consider adding these structural accounts if they're missing (check each one):**
+- **GST Payable:** (Liability) Almost every business has this. **ESTIMATE VALUES:** If the document doesn't explicitly state GST, estimate a reasonable closing balance (e.g. roughly 10-15% of an average month's revenue/expenses) or use a placeholder like $2,000. Do NOT leave as 0.0 unless the company is clearly exempt.
+- **Accounts Receivable:** (Asset) If there is Revenue, there is typically AR. **ESTIMATE:** If missing, estimate a value based on ~1 month of revenue.
+- **Accounts Payable:** (Liability) If there are Expenses, there is typically AP. **ESTIMATE:** If missing, estimate a value based on ~1 month of expenses.
+- **Current Year Earnings:** (Equity) This account holds the current period's profit/loss before transfer to Retained Earnings. Create it with a value of 0.0 if missing.
+- **Shareholder Current Account:** (Equity/Liability) If "Shareholder Salaries" or drawings appear, consider adding this account.
+- **Income Tax Payable/Provision:** (Liability) Distinct from GST. If the business is profitable, consider adding this.
 - **Accumulated Depreciation:** (Contra-Asset) If Fixed Assets exist, create matching Accumulated Depreciation accounts (e.g., "Accumulated Depreciation - Plant & Equipment"). Estimate 30-50% of the fixed asset value if no data is available.
+- **Intangible Assets:** (Asset) Consider whether the business has Goodwill, Brand/Trademarks, Software Licenses, Customer Relationships, etc. If there's evidence of acquisition or intangibles in the documents, add these accounts with reasonable estimated values.
+- **Other Structural Accounts:** Think broadly about what other accounts this specific business might need based on the industry, business model, and available data.
+
+**Think holistically:** Don't just add the accounts listed above. Analyze the business and consider what other structural accounts make sense for this particular company.
 
 ### 3. The "Naming Convention" Rule
 Rename accounts to be short, professional, and clear.
@@ -146,11 +154,22 @@ Rename accounts to be short, professional, and clear.
 - "Light, Power & Heating" -> `Utilities` (or keep original if it matches the user's preference)
 - "Telephone & Internet" -> `Comms` or `Telephone & Internet`
 
-### 4. Balancing Account Selection
-**CRITICAL:** When creating new balance sheet accounts, you must designate ONE account as the balancing account.
-- **PREFERRED CHOICE:** Set `is_balancing_account: true` on "Cash at Bank", "Cash", or the primary liquid cash account.
-- This account will be automatically adjusted to maintain the accounting equation (Assets = Liabilities + Equity).
-- Do NOT choose Retained Earnings or other equity accounts unless there is no cash account.
+### 4. Balancing Account Selection (HIGHEST PRIORITY)
+**🚨 CRITICAL - READ CAREFULLY:**
+You MUST designate EXACTLY ONE account as the balancing account by setting `is_balancing_account: true`.
+
+**MANDATORY SELECTION PRIORITY (follow this order strictly):**
+1. **FIRST CHOICE (99% of cases):** "Cash at Bank" or "Cash" - Look for any account with "Cash" in the name
+2. **SECOND CHOICE:** "Bank Account" or any liquid asset account
+3. **LAST RESORT ONLY:** Retained Earnings (only if absolutely no cash-type account exists)
+
+**Why Cash is REQUIRED as the balancing account:**
+- Cash is the natural balancing point in any business
+- The balancing account will be automatically adjusted to maintain Assets = Liabilities + Equity
+- Using Retained Earnings as the plug creates artificial equity fluctuations
+- Cash fluctuations are real and expected in forecasting
+
+**Action:** Review ALL balance sheet accounts (both existing and new). Find the cash account. Set `is_balancing_account: true` ONLY on that account. Set `is_balancing_account: false` on ALL other accounts (especially Retained Earnings).
 
 ### 5. Debt Structure
 If you see "Interest" in P&L but no Debt in BS:
@@ -168,11 +187,13 @@ Return a valid JSON object matching the `FinancialHistoryOverrides` schema.
         let user_prompt = format!(
             "## CURRENT EXTRACTED DATA\n```json\n{}\n```\n\n\
              ## USER INSTRUCTION\n{}\n\n\
-             ## TASK\n\
+             ## YOUR TASK\n\
              1. Review the `balance_sheet` in the raw data. Identify all individual fixed assets and MERGE them into summary accounts.\n\
-             2. Check for missing structural accounts (GST, AR, AP, Current Year Earnings, Accumulated Depreciation, Shareholder Current Account) and ADD them.\n\
-             3. Rename P&L lines to be cleaner.\n\
-             4. Set the balancing account to Cash at Bank or the primary cash account.",
+             2. **BEFORE adding any new accounts:** Check if they already exist in the raw data! Only add accounts that are genuinely missing.\n\
+             3. Review what structural accounts might be missing (e.g., GST, AR, AP, Current Year Earnings, Accumulated Depreciation, Intangible Assets, etc.) and ADD them with realistic estimated values based on the business data.\n\
+             4. Think holistically: what other accounts does this specific business need that aren't listed above?\n\
+             5. Rename P&L lines to be cleaner and more professional.\n\
+             6. **CRITICAL:** Set `is_balancing_account: true` on the CASH account (\"Cash at Bank\", \"Cash\", etc.). Do NOT use Retained Earnings as the balancing account unless there is absolutely no cash account.",
             current_state,
             user_instruction.unwrap_or("Clean up fixed assets and ensure all standard trading accounts exist.")
         );
@@ -207,12 +228,15 @@ Return a valid JSON object matching the `FinancialHistoryOverrides` schema.
              ## 2. JUNIOR ANALYST DRAFT OVERRIDES\n```json\n{}\n```\n\n\
              ## 3. USER INSTRUCTION (If Any)\n{}\n\n\
              ## YOUR TASK (CFO REVIEW)\n\
-             Review the Draft Overrides against the Raw Data and Documents.\n\
-             - Verify the junior analyst caught all granular fixed assets.\n\
-             - **CRITICAL:** Check for GST/VAT, Accounts Receivable, Accounts Payable, Current Year Earnings, Income Tax Provision, and Accumulated Depreciation accounts. If the draft missed them, YOU must add them.\n\
-             - Ensure the balancing account is set to Cash at Bank (or the primary cash account).\n\
-             - Ensure category names are standardized (e.g., 'Current Assets', 'Non-Current Liabilities').\n\
-             - Output the FINAL, corrected overrides JSON.",
+             Review the Draft Overrides against the Raw Data and Documents. Your job is to catch mistakes and ensure financial completeness.\n\n\
+             **CRITICAL CHECKS (in order of priority):**\n\
+             1. **DUPLICATE CHECK:** Did the draft add accounts that already exist in the raw data? Remove duplicate additions immediately.\n\
+             2. **BALANCING ACCOUNT:** Did the draft set Retained Earnings (or any equity account) as the balancing account? **FIX THIS!** Change it to the Cash account.\n\
+             3. **STRUCTURAL COMPLETENESS:** Consider what accounts might be missing (e.g., GST/VAT, AR, AP, Current Year Earnings, Income Tax Provision, Accumulated Depreciation, Intangible Assets like Goodwill, industry-specific accounts, etc.). Add any that are genuinely needed with realistic estimates.\n\
+             4. **THINK HOLISTICALLY:** Beyond the standard list, what other accounts does THIS specific business need based on industry, business model, and available data?\n\
+             5. **FIXED ASSETS:** Verify all granular assets were merged into clean pools.\n\
+             6. **CATEGORY STANDARDIZATION:** Ensure category names are professional (e.g., 'Current Assets', 'Non-Current Liabilities').\n\n\
+             Output the FINAL, corrected overrides JSON that supersedes the draft.",
             raw_json,
             draft_json,
             user_instruction.unwrap_or("Ensure full financial integrity.")

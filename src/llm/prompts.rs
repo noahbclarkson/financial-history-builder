@@ -432,14 +432,23 @@ You must correct the junior analyst's work, add missing structural accounts, and
 ## THE "CFO" CHECKLIST (Step-by-Step Logic)
 
 ### 1. Structural Integrity Check (CRITICAL)
-A business cannot function without these core working capital accounts. If the draft missed them, YOU MUST ADD THEM (using `new_balance_sheet_accounts`):
-- **GST/VAT/Sales Tax Payable:** If Revenue > $60k, this MUST exist. If missing, estimate a provision (e.g., 10-15% of monthly activity) or a placeholder like $2,000-$5,000.
-- **Accounts Receivable:** If there is Sales Revenue, there MUST be AR. Estimate based on ~1 month of revenue if missing.
-- **Accounts Payable:** If there are Operating Expenses, there MUST be AP. Estimate based on ~1 month of expenses if missing.
-- **Income Tax Payable/Provision:** Distinct from GST. If the business is profitable, this MUST exist. Estimate based on ~28% of net profit if missing.
-- **Shareholder Current Account:** If there are drawings or shareholder salaries, this specific Equity/Liability account must exist.
-- **Current Year Earnings:** This is a CRITICAL equity account that holds the current period's profit/loss before it's transferred to Retained Earnings. It MUST exist. Add it with a value of 0.0 as a starting point.
-- **Accumulated Depreciation:** If Fixed Assets exist (Plant & Equipment, Furniture, Motor Vehicles, etc.), you MUST create corresponding Accumulated Depreciation accounts (e.g., "Accumulated Depreciation - Plant & Equipment"). These are contra-asset accounts. Estimate a reasonable accumulated value based on the asset ages if possible, or use a conservative estimate like 30-50% of the fixed asset value.
+A business cannot function without these core working capital accounts.
+
+**🚨 FIRST STEP: Check for Duplicate Accounts!**
+Before adding ANY account, verify it doesn't already exist in the raw data OR in the draft's `new_balance_sheet_accounts`. If an account already exists, do NOT add it again. Only add accounts that are genuinely missing.
+
+**Review and add these structural accounts if missing (consider each carefully):**
+- **GST/VAT/Sales Tax Payable:** If Revenue > $60k, this is typically needed. Estimate a provision (e.g., 10-15% of monthly activity) or a placeholder like $2,000-$5,000.
+- **Accounts Receivable:** If there is Sales Revenue, AR is typically needed. Estimate based on ~1 month of revenue if missing.
+- **Accounts Payable:** If there are Operating Expenses, AP is typically needed. Estimate based on ~1 month of expenses if missing.
+- **Income Tax Payable/Provision:** Distinct from GST. If the business is profitable, consider adding this. Estimate based on ~28% of net profit if missing.
+- **Shareholder Current Account:** If there are drawings or shareholder salaries, this specific Equity/Liability account should exist.
+- **Current Year Earnings:** This is a CRITICAL equity account that holds the current period's profit/loss before it's transferred to Retained Earnings. Add it with a value of 0.0 if missing.
+- **Accumulated Depreciation:** If Fixed Assets exist (Plant & Equipment, Furniture, Motor Vehicles, etc.), create corresponding Accumulated Depreciation accounts (e.g., "Accumulated Depreciation - Plant & Equipment"). These are contra-asset accounts. Estimate a reasonable accumulated value based on asset ages if possible, or use a conservative estimate like 30-50% of the fixed asset value.
+- **Intangible Assets:** Consider whether the business has Goodwill, Brand/Trademarks, Software Licenses, Customer Relationships, etc. If there's evidence of acquisition, intellectual property, or brand value in the documents, add these accounts with reasonable estimated values.
+- **Other Industry-Specific Accounts:** Think beyond this list. What other accounts does THIS specific business need based on its industry, business model, and the available financial data?
+
+**Think holistically:** The above list is a starting point, not exhaustive. Analyze the business comprehensively and consider what other structural accounts are needed to paint a complete financial picture.
 
 ### 2. Fixed Asset Consolidation Review
 The junior analyst attempts to merge small assets (e.g., "iPhone", "Chair", "Desk").
@@ -447,12 +456,27 @@ The junior analyst attempts to merge small assets (e.g., "iPhone", "Chair", "Des
 - **Action:** Ensure the final result yields ONLY clean pools: "Fixed Assets - Plant & Equipment", "Fixed Assets - Computer Equipment", "Fixed Assets - Furniture & Fittings", "Fixed Assets - Motor Vehicles".
 - **CRITICAL:** For each Fixed Asset category, ensure there is a matching "Accumulated Depreciation - [Category]" account.
 
-### 3. Balancing Account Selection
-**Set the balancing account to Cash or the primary liquid asset account.**
-- Review the draft's balancing account selection.
-- **PREFERRED:** The balancing account should be "Cash at Bank", "Cash", or the most liquid cash account.
-- If the draft chose a different account (like Retained Earnings), change it to Cash unless there's a very good reason not to.
-- Ensure EXACTLY ONE account has `is_balancing_account: true`.
+### 3. Balancing Account Selection (HIGHEST PRIORITY - FIX THIS IF WRONG!)
+**🚨 CRITICAL REVIEW TASK:**
+The junior analyst may have incorrectly set the balancing account. This is a common mistake that MUST be corrected.
+
+**CHECK THE DRAFT:**
+- Did the draft set `is_balancing_account: true` on Retained Earnings? **This is WRONG - you must fix it!**
+- Did the draft set `is_balancing_account: true` on any equity account? **This is WRONG - you must fix it!**
+
+**MANDATORY SELECTION PRIORITY (follow strictly):**
+1. **FIRST CHOICE (99% of cases):** "Cash at Bank" or "Cash" - Look for ANY account with "Cash" in the name
+2. **SECOND CHOICE:** "Bank Account" or any liquid asset account
+3. **LAST RESORT ONLY:** Retained Earnings (only if absolutely no cash-type account exists)
+
+**YOUR ACTION:**
+- Find the cash account (check both existing accounts AND new accounts being added)
+- If using modifications, add an `UpdateMetadata` modification to set the cash account's `is_balancing_account` to true
+- If adding a new cash account, ensure it has `is_balancing_account: true`
+- REMOVE `is_balancing_account: true` from any other accounts (especially Retained Earnings)
+- Ensure EXACTLY ONE account has `is_balancing_account: true`
+
+**Why this matters:** Using Retained Earnings as the plug creates artificial equity fluctuations. Cash is the natural balancing point.
 
 ### 4. Category Standardization
 Ensure `category` labels are professional and standardized.
