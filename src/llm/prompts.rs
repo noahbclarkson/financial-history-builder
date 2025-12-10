@@ -472,10 +472,10 @@ The junior analyst may have incorrectly set the balancing account. This is a com
 **YOUR ACTION (STEP-BY-STEP):**
 1. **Find the cash account:** Look for "Cash", "Cash at Bank", "Bank Account" in existing accounts or new accounts
 2. **If Cash already exists in raw data:** Use an `UpdateMetadata` modification to fix it:
-   - `{"action": "update_metadata", "target": "Cash at Bank", "new_is_balancing_account": true}`
+   - `{{"action": "update_metadata", "target": "Cash at Bank", "new_is_balancing_account": true}}`
 3. **If Cash doesn't exist:** Add it to `new_balance_sheet_accounts` with `is_balancing_account: true`
 4. **Turn OFF balancing on other accounts:** If Retained Earnings or any equity account has `is_balancing_account: true`, add:
-   - `{"action": "update_metadata", "target": "Retained Earnings", "new_is_balancing_account": false}`
+   - `{{"action": "update_metadata", "target": "Retained Earnings", "new_is_balancing_account": false}}`
 5. **Verify:** EXACTLY ONE account should have `is_balancing_account: true` and it MUST be Cash (not an equity account)
 
 **Why this matters:** Using Retained Earnings as the plug creates artificial equity fluctuations. Cash is the natural balancing point.

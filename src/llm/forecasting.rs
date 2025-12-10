@@ -187,11 +187,11 @@ You MUST designate EXACTLY ONE account as the balancing account by setting `is_b
 1. **Check if Cash exists in raw data:** Look for "Cash", "Cash at Bank", "Bank Account", etc. in the existing balance sheet accounts
 2. **If Cash EXISTS:** Do NOT add it to `new_balance_sheet_accounts`. Instead:
    - Add an `UpdateMetadata` modification to set `new_is_balancing_account: true` on the Cash account
-   - Example: `{"action": "update_metadata", "target": "Cash at Bank", "new_is_balancing_account": true}`
+   - Example: `{{"action": "update_metadata", "target": "Cash at Bank", "new_is_balancing_account": true}}`
    - **NEVER add a duplicate Cash account!**
 3. **If Cash DOES NOT EXIST:** Add it to `new_balance_sheet_accounts` with `is_balancing_account: true` (see example below)
 4. **If Retained Earnings (or any equity account) is currently the balancing account:** Add an `UpdateMetadata` modification to set `new_is_balancing_account: false` on it
-   - Example: `{"action": "update_metadata", "target": "Retained Earnings", "new_is_balancing_account": false}`
+   - Example: `{{"action": "update_metadata", "target": "Retained Earnings", "new_is_balancing_account": false}}`
 
 ### 5. Debt Structure
 If you see "Interest" in P&L but no Debt in BS:
