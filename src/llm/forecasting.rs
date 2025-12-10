@@ -1,8 +1,8 @@
 use crate::error::{FinancialHistoryError, Result};
-use crate::llm::{extract_first_json_object, Content, GeminiClient, RemoteDocument};
+use crate::llm::{extract_first_json_object, prompts, Content, GeminiClient, RemoteDocument};
 use crate::overrides::{AccountModification, FinancialHistoryOverrides};
 use crate::schema::FinancialHistoryConfig;
-use log::warn;
+use log::{info, warn};
 use serde_json::Value;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -15,7 +15,7 @@ const FORECASTING_EXAMPLE: &str = r#"
 
 **Correct "Thought Process":**
 1. *Fixed Assets:* A forecast doesn't need to depreciate a specific "Dishwasher". It needs a "Plant & Equipment" pool. I will merge all 45 lines into 3 categories: "Fixed Assets - Plant", "Fixed Assets - Furniture", and "Fixed Assets - Improvements".
-2. *Liabilities:* The raw data missed "GST Payable" and "Shareholder Current Account". I must create these.
+2. *Liabilities:* The raw data missed "GST Payable" and "Shareholder Current Account". I must create these. For GST Payable, I'll estimate based on the company's revenue/expense levels (approximately $5,000 seems reasonable for a business this size).
 3. *Naming:* "Ministry of Education - 20 Hours..." is too long. Rename to "Government Funding".
 
 **Correct Output (JSON):**
@@ -71,13 +71,35 @@ impl ForecastingSetupAgent {
         }
     }
 
-    /// Generates overrides to prepare the extracted history for forecasting.
+    /// Generates overrides using a 2-step process (Draft -> Review).
     ///
     /// # Arguments
     /// * `current_config` - The raw extraction result.
     /// * `documents` - The source documents (for context on missing items).
     /// * `user_instruction` - Optional specific requests (e.g., "Merge cleaning and rubbish").
     pub async fn generate_overrides(
+        &self,
+        current_config: &FinancialHistoryConfig,
+        documents: &[RemoteDocument],
+        user_instruction: Option<&str>,
+    ) -> Result<FinancialHistoryOverrides> {
+        // --- STEP 1: GENERATE DRAFT ---
+        info!("Forecasting Agent: Step 1 - Generating Draft Overrides...");
+        let draft_overrides = self
+            .generate_draft_overrides(current_config, documents, user_instruction)
+            .await?;
+
+        // --- STEP 2: CFO REVIEW & REFINE ---
+        info!("Forecasting Agent: Step 2 - CFO Review & Refinement...");
+        let final_overrides = self
+            .review_and_refine(current_config, &draft_overrides, documents, user_instruction)
+            .await?;
+
+        Ok(final_overrides)
+    }
+
+    /// Step 1: The "Junior Analyst" Logic - Generates draft overrides
+    async fn generate_draft_overrides(
         &self,
         current_config: &FinancialHistoryConfig,
         documents: &[RemoteDocument],
@@ -109,11 +131,13 @@ You must apply the following **Thought Process** to every account:
 ### 2. The "Invisible Accounts" Rule (NZ/AU Context)
 Forecasting requires accounts that may not appear in a simple P&L extract but are logically necessary.
 **You must inject these into `new_balance_sheet_accounts`:**
-- **GST Payable:** (Liability) Almost every business has this. Create it if missing.
-- **Accounts Receivable:** (Asset) If there is Revenue, there is AR.
-- **Accounts Payable:** (Liability) If there are Expenses, there is AP.
+- **GST Payable:** (Liability) Almost every business has this. Create it if missing. **ESTIMATE VALUES:** If the document doesn't explicitly state GST, estimate a reasonable closing balance (e.g. roughly 10-15% of an average month's revenue/expenses) or use a placeholder like $2,000. Do NOT leave as 0.0 unless the company is clearly exempt.
+- **Accounts Receivable:** (Asset) If there is Revenue, there is AR. **ESTIMATE:** If missing, estimate a value based on ~1 month of revenue.
+- **Accounts Payable:** (Liability) If there are Expenses, there is AP. **ESTIMATE:** If missing, estimate a value based on ~1 month of expenses.
+- **Current Year Earnings:** (Equity) This is CRITICAL. This account holds the current period's profit/loss before transfer to Retained Earnings. It MUST exist. Create it with a value of 0.0.
 - **Shareholder Current Account:** (Equity/Liability) If "Shareholder Salaries" appear in P&L, this account MUST exist in BS to offset the entry.
 - **Income Tax Payable:** (Liability) distinct from GST.
+- **Accumulated Depreciation:** (Contra-Asset) If Fixed Assets exist, create matching Accumulated Depreciation accounts (e.g., "Accumulated Depreciation - Plant & Equipment"). Estimate 30-50% of the fixed asset value if no data is available.
 
 ### 3. The "Naming Convention" Rule
 Rename accounts to be short, professional, and clear.
@@ -122,7 +146,13 @@ Rename accounts to be short, professional, and clear.
 - "Light, Power & Heating" -> `Utilities` (or keep original if it matches the user's preference)
 - "Telephone & Internet" -> `Comms` or `Telephone & Internet`
 
-### 4. Debt Structure
+### 4. Balancing Account Selection
+**CRITICAL:** When creating new balance sheet accounts, you must designate ONE account as the balancing account.
+- **PREFERRED CHOICE:** Set `is_balancing_account: true` on "Cash at Bank", "Cash", or the primary liquid cash account.
+- This account will be automatically adjusted to maintain the accounting equation (Assets = Liabilities + Equity).
+- Do NOT choose Retained Earnings or other equity accounts unless there is no cash account.
+
+### 5. Debt Structure
 If you see "Interest" in P&L but no Debt in BS:
 - Create `Business Loan` (Liability).
 - If the user instruction mentions specific terms (e.g., "30 year loan"), create those specific accounts.
@@ -140,17 +170,78 @@ Return a valid JSON object matching the `FinancialHistoryOverrides` schema.
              ## USER INSTRUCTION\n{}\n\n\
              ## TASK\n\
              1. Review the `balance_sheet` in the raw data. Identify all individual fixed assets and MERGE them into summary accounts.\n\
-             2. Check for missing structural accounts (GST, AR, AP, Shareholder Current Account) and ADD them.\n\
-             3. Rename P&L lines to be cleaner.",
+             2. Check for missing structural accounts (GST, AR, AP, Current Year Earnings, Accumulated Depreciation, Shareholder Current Account) and ADD them.\n\
+             3. Rename P&L lines to be cleaner.\n\
+             4. Set the balancing account to Cash at Bank or the primary cash account.",
             current_state,
             user_instruction.unwrap_or("Clean up fixed assets and ensure all standard trading accounts exist.")
         );
 
+        self.call_llm_with_retry(
+            &system_prompt,
+            &user_prompt,
+            documents,
+            Some(schema_json_value),
+            "Forecasting_Draft",
+        )
+        .await
+    }
+
+    /// Step 2: The "CFO" Logic - Reviews and refines the draft
+    async fn review_and_refine(
+        &self,
+        raw_config: &FinancialHistoryConfig,
+        draft: &FinancialHistoryOverrides,
+        documents: &[RemoteDocument],
+        user_instruction: Option<&str>,
+    ) -> Result<FinancialHistoryOverrides> {
+        let schema_json_value = FinancialHistoryOverrides::get_gemini_response_schema()?;
+
+        let raw_json = serde_json::to_string_pretty(raw_config)?;
+        let draft_json = serde_json::to_string_pretty(draft)?;
+
+        let system_prompt = prompts::SYSTEM_PROMPT_FORECAST_REVIEW;
+
+        let user_prompt = format!(
+            "## 1. RAW EXTRACTED DATA\n```json\n{}\n```\n\n\
+             ## 2. JUNIOR ANALYST DRAFT OVERRIDES\n```json\n{}\n```\n\n\
+             ## 3. USER INSTRUCTION (If Any)\n{}\n\n\
+             ## YOUR TASK (CFO REVIEW)\n\
+             Review the Draft Overrides against the Raw Data and Documents.\n\
+             - Verify the junior analyst caught all granular fixed assets.\n\
+             - **CRITICAL:** Check for GST/VAT, Accounts Receivable, Accounts Payable, Current Year Earnings, Income Tax Provision, and Accumulated Depreciation accounts. If the draft missed them, YOU must add them.\n\
+             - Ensure the balancing account is set to Cash at Bank (or the primary cash account).\n\
+             - Ensure category names are standardized (e.g., 'Current Assets', 'Non-Current Liabilities').\n\
+             - Output the FINAL, corrected overrides JSON.",
+            raw_json,
+            draft_json,
+            user_instruction.unwrap_or("Ensure full financial integrity.")
+        );
+
+        self.call_llm_with_retry(
+            system_prompt,
+            &user_prompt,
+            documents,
+            Some(schema_json_value),
+            "Forecasting_Review",
+        )
+        .await
+    }
+
+    /// Helper for robust LLM calls with retry logic
+    async fn call_llm_with_retry(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        documents: &[RemoteDocument],
+        schema: Option<Value>,
+        label: &str,
+    ) -> Result<FinancialHistoryOverrides> {
         let mut last_error: Option<String> = None;
-        let max_retries = 5;
+        let max_retries = 3;
 
         for attempt in 1..=max_retries {
-            let mut prompt_with_context = user_prompt.clone();
+            let mut prompt_with_context = user_prompt.to_string();
             if let Some(err) = &last_error {
                 prompt_with_context.push_str(&format!(
                     "\n\n## PREVIOUS ATTEMPT ISSUE\n{}\n\
@@ -166,11 +257,11 @@ Return a valid JSON object matching the `FinancialHistoryOverrides` schema.
                 .client
                 .generate_content(
                     &self.model,
-                    &system_prompt,
+                    system_prompt,
                     messages,
-                    Some(schema_json_value.clone()),
+                    schema.clone(),
                     "application/json",
-                    "Forecasting_Setup",
+                    &format!("{}_attempt_{}", label, attempt),
                 )
                 .await
             {
@@ -179,17 +270,12 @@ Return a valid JSON object matching the `FinancialHistoryOverrides` schema.
                     match serde_json::from_str::<FinancialHistoryOverrides>(&cleaned_json) {
                         Ok(overrides) => return Ok(overrides),
                         Err(e) => {
-                            warn!(
-                                "Forecasting overrides attempt {} failed to parse: {}",
-                                attempt, e
-                            );
+                            warn!("{} attempt {} failed to parse: {}", label, attempt, e);
                             if attempt == max_retries {
                                 // Last-ditch salvage: try to coerce partial JSON into overrides
                                 if let Ok(value) = serde_json::from_str::<Value>(&cleaned_json) {
                                     if let Some(overrides) = salvage_overrides_from_value(&value) {
-                                        warn!(
-                                            "Salvaged forecasting overrides from partial JSON after parse failure."
-                                        );
+                                        warn!("{} salvaged from partial JSON after parse failure.", label);
                                         return Ok(overrides);
                                     }
                                 }
@@ -200,7 +286,7 @@ Return a valid JSON object matching the `FinancialHistoryOverrides` schema.
                     }
                 }
                 Err(e) => {
-                    warn!("Forecasting overrides attempt {} failed: {}", attempt, e);
+                    warn!("{} attempt {} API failed: {}", label, attempt, e);
                     if attempt == max_retries {
                         return Err(e);
                     }
@@ -212,9 +298,10 @@ Return a valid JSON object matching the `FinancialHistoryOverrides` schema.
             sleep(Duration::from_secs(2 * attempt as u64)).await;
         }
 
-        Err(FinancialHistoryError::ExtractionFailed(
-            "Forecasting overrides generation exhausted retries".to_string(),
-        ))
+        Err(FinancialHistoryError::ExtractionFailed(format!(
+            "{} exhausted retries. Last error: {:?}",
+            label, last_error
+        )))
     }
 }
 

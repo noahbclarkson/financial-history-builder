@@ -72,9 +72,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Create a channel for observability
     let (tx, mut rx) = mpsc::channel(32);
 
+    // Clone documents before moving into the extraction closure
+    let extraction_docs = documents.clone();
+
     // Spawn the extraction in a separate task
     let extraction_handle =
-        tokio::spawn(async move { extractor.extract(&documents, Some(tx)).await });
+        tokio::spawn(async move { extractor.extract(&extraction_docs, Some(tx)).await });
 
     // Poll the channel and print real-time updates
     tokio::spawn(async move {
@@ -198,11 +201,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let refine_extractor =
         FinancialExtractor::new(client.clone(), "gemini-2.5-flash-preview-09-2025");
     let refine_instruction = demo_instruction.to_string();
+    let refine_config = config.clone();
 
     // Spawn refinement in separate task
     let refinement_handle = tokio::spawn(async move {
         refine_extractor
-            .refine_history(config, &refine_docs, &refine_instruction, Some(refine_tx))
+            .refine_history(refine_config, &refine_docs, &refine_instruction, Some(refine_tx))
             .await
     });
 
