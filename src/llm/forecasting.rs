@@ -17,10 +17,19 @@ const FORECASTING_EXAMPLE: &str = r#"
 1. *Fixed Assets:* A forecast doesn't need to depreciate a specific "Dishwasher". It needs a "Plant & Equipment" pool. I will merge all 45 lines into 3 categories: "Fixed Assets - Plant", "Fixed Assets - Furniture", and "Fixed Assets - Improvements".
 2. *Liabilities:* The raw data missed "GST Payable" and "Shareholder Current Account". I must create these. For GST Payable, I'll estimate based on the company's revenue/expense levels (approximately $5,000 seems reasonable for a business this size).
 3. *Naming:* "Ministry of Education - 20 Hours..." is too long. Rename to "Government Funding".
+4. *Balancing Account:* The raw data is missing a "Cash at Bank" account, so I'll add it with `is_balancing_account: true`. This is where the accounting equation will be balanced. (Note: If Cash already existed in the raw data, I would use an `UpdateMetadata` modification instead to set its `is_balancing_account` flag to true.)
 
 **Correct Output (JSON):**
 {
   "new_balance_sheet_accounts": [
+    {
+      "name": "Cash at Bank",
+      "category": "Current Assets",
+      "account_type": "Asset",
+      "method": "Curve",
+      "snapshots": [{ "date": "2024-03-31", "value": 15000.0, "source": null }],
+      "is_balancing_account": true
+    },
     {
       "name": "GST Payable",
       "category": "Current Liabilities",
@@ -158,6 +167,11 @@ Rename accounts to be short, professional, and clear.
 **🚨 CRITICAL - READ CAREFULLY:**
 You MUST designate EXACTLY ONE account as the balancing account by setting `is_balancing_account: true`.
 
+**⛔ ABSOLUTE PROHIBITION:**
+**DO NOT set Retained Earnings as the balancing account!**
+**DO NOT set ANY equity account as the balancing account!**
+**The balancing account MUST be Cash or a liquid asset!**
+
 **MANDATORY SELECTION PRIORITY (follow this order strictly):**
 1. **FIRST CHOICE (99% of cases):** "Cash at Bank" or "Cash" - Look for any account with "Cash" in the name
 2. **SECOND CHOICE:** "Bank Account" or any liquid asset account
@@ -169,7 +183,15 @@ You MUST designate EXACTLY ONE account as the balancing account by setting `is_b
 - Using Retained Earnings as the plug creates artificial equity fluctuations
 - Cash fluctuations are real and expected in forecasting
 
-**Action:** Review ALL balance sheet accounts (both existing and new). Find the cash account. Set `is_balancing_account: true` ONLY on that account. Set `is_balancing_account: false` on ALL other accounts (especially Retained Earnings).
+**Implementation Steps:**
+1. **Check if Cash exists in raw data:** Look for "Cash", "Cash at Bank", "Bank Account", etc. in the existing balance sheet accounts
+2. **If Cash EXISTS:** Do NOT add it to `new_balance_sheet_accounts`. Instead:
+   - Add an `UpdateMetadata` modification to set `new_is_balancing_account: true` on the Cash account
+   - Example: `{"action": "update_metadata", "target": "Cash at Bank", "new_is_balancing_account": true}`
+   - **NEVER add a duplicate Cash account!**
+3. **If Cash DOES NOT EXIST:** Add it to `new_balance_sheet_accounts` with `is_balancing_account: true` (see example below)
+4. **If Retained Earnings (or any equity account) is currently the balancing account:** Add an `UpdateMetadata` modification to set `new_is_balancing_account: false` on it
+   - Example: `{"action": "update_metadata", "target": "Retained Earnings", "new_is_balancing_account": false}`
 
 ### 5. Debt Structure
 If you see "Interest" in P&L but no Debt in BS:
@@ -397,10 +419,14 @@ fn coerce_modification(value: &Value) -> Option<AccountModification> {
             let new_type = obj
                 .get("new_type")
                 .and_then(|v| serde_json::from_value(v.clone()).ok());
+            let new_is_balancing_account = obj
+                .get("new_is_balancing_account")
+                .and_then(|v| v.as_bool());
             Some(AccountModification::UpdateMetadata {
                 target,
                 new_category,
                 new_type,
+                new_is_balancing_account,
             })
         }
         "delete" => {

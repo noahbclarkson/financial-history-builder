@@ -53,7 +53,7 @@ pub enum AccountModification {
         target_name: String,
     },
 
-    /// Change the category or account type.
+    /// Change the category, account type, or balancing account flag.
     UpdateMetadata {
         #[schemars(description = "The account name.")]
         target: String,
@@ -61,6 +61,10 @@ pub enum AccountModification {
         new_category: Option<String>,
         #[schemars(description = "New account type (optional).")]
         new_type: Option<AccountType>,
+        #[schemars(
+            description = "Set whether this account is the balancing account (optional). CRITICAL: Only ONE account should have this set to true. Use this to change the balancing account from Retained Earnings to Cash."
+        )]
+        new_is_balancing_account: Option<bool>,
     },
 
     /// Delete an account entirely.
@@ -135,6 +139,7 @@ fn apply_single_modification(
             target,
             new_category,
             new_type,
+            new_is_balancing_account,
         } => {
             if let Some(acc) = find_bs_mut(config, target) {
                 if let Some(c) = new_category {
@@ -142,6 +147,9 @@ fn apply_single_modification(
                 }
                 if let Some(t) = new_type {
                     acc.account_type = t.clone();
+                }
+                if let Some(is_balancing) = new_is_balancing_account {
+                    acc.is_balancing_account = *is_balancing;
                 }
             } else if let Some(acc) = find_is_mut(config, target) {
                 // IS accounts don't currently have a 'category' field in schema, but we update type
