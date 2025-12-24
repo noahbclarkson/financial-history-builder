@@ -1,6 +1,7 @@
 use dotenv::dotenv;
-use financial_history_builder::llm::{DocumentAssistant, GeminiClient, RemoteDocument};
+use financial_history_builder::llm::DocumentAssistant;
 use futures::future;
+use gemini_structured_output::prelude::{Model, StructuredClientBuilder};
 use std::error::Error;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -14,7 +15,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("💬 Starting Document Chat...\n");
 
     // 1. Setup Client
-    let client = GeminiClient::new(api_key);
+    let client = StructuredClientBuilder::new(api_key)
+        .with_model(Model::Gemini25Flash)
+        .build()?;
     let assistant = DocumentAssistant::new(client.clone());
 
     // 2. Discovery & Upload (Same as previous examples)
@@ -36,15 +39,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("☁️  Uploading {} documents...", pdf_paths.len());
     let upload_futures: Vec<_> = pdf_paths
         .iter()
-        .map(|path| client.upload_document(path))
+        .map(|path| client.file_manager.upload_and_wait(path))
         .collect();
 
-    let documents: Vec<RemoteDocument> = future::try_join_all(upload_futures).await?;
+    let documents = future::try_join_all(upload_futures).await?;
     println!("✅ Documents active.\n");
 
     // 3. Interactive Loop
-    let model = "gemini-2.5-flash-preview-09-2025"; // Or gemini-1.5-pro
-
     println!("🤖 Ready! Ask questions about your documents (type 'quit' to exit).");
     println!("------------------------------------------------------------------");
 
@@ -67,7 +68,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("\nThinking...");
 
         // The Magic Call
-        match assistant.ask(model, prompt, &documents).await {
+        match assistant.ask(prompt, &documents).await {
             Ok(response) => {
                 println!("\n{}\n", response);
                 println!("------------------------------------------------------------------");

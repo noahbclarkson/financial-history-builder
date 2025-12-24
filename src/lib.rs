@@ -70,8 +70,6 @@ pub mod overrides;
 pub mod schema;
 pub mod seasonality;
 pub mod utils;
-
-#[cfg(feature = "gemini")]
 pub mod llm;
 
 pub use balancer::{

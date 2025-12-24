@@ -1,4 +1,5 @@
 use chrono::NaiveDate;
+use gemini_structured_output::StructuredError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -42,15 +43,9 @@ pub enum FinancialHistoryError {
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
-    #[cfg(feature = "gemini")]
-    #[error("HTTP error: {0}")]
-    HttpError(#[from] reqwest::Error),
+    #[error("Gemini structured output error: {0}")]
+    StructuredOutput(#[from] StructuredError),
 
-    #[cfg(feature = "gemini")]
-    #[error("JSON Patch error: {0}")]
-    JsonPatchError(#[from] json_patch::PatchError),
-
-    #[cfg(feature = "gemini")]
     #[error("Extraction failed: {0}")]
     ExtractionFailed(String),
 }

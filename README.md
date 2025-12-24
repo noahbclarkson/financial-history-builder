@@ -161,24 +161,39 @@ fn main() -> Result<()> {
 
 ## 🤖 AI & LLM Integration
 
-This library is designed to work as the backend for AI extraction agents (like GPT-4o or Gemini 1.5 Pro).
+This library ships with a `llm` module that uses `gemini-structured-output` for strongly typed extraction, refinement, and forecasting setup.
 
-### 1. Generate Schema for LLM
+### 1. Typed Extraction with Gemini Structured Output
 
-You can generate a strict JSON schema to include in your system prompt. This ensures the LLM outputs JSON that maps **perfectly** to the Rust structs.
+```rust
+use financial_history_builder::llm::FinancialExtractor;
+use gemini_structured_output::prelude::{Model, StructuredClientBuilder};
+
+# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+let client = StructuredClientBuilder::new("your-api-key")
+    .with_model(Model::Gemini25Flash)
+    .build()?;
+
+let extractor = FinancialExtractor::new(client.clone());
+let docs = vec![client.file_manager.upload_and_wait("examples/documents/report.pdf").await?];
+
+let config = extractor.extract(&docs, None).await?;
+println!("Extracted {} accounts", config.balance_sheet.len());
+# Ok(())
+# }
+```
+
+### 2. Optional Schema Introspection
+
+You can still generate a JSON schema for auditing or debugging:
 
 ```rust
 use financial_history_builder::FinancialHistoryConfig;
 
 fn main() {
-    // Prints the JSON schema definition
     println!("{}", FinancialHistoryConfig::schema_as_json().unwrap());
 }
 ```
-
-### 2. Example Prompt
-
-See [GEMINI_PROMPT_EXAMPLE.md](GEMINI_PROMPT_EXAMPLE.md) for a production-ready system prompt that teaches an LLM how to extract data specifically for this engine (handling opening balances, overlapping periods, etc.).
 
 ---
 

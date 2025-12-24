@@ -1,10 +1,11 @@
 use dotenv::dotenv;
-use financial_history_builder::llm::{ExtractionEvent, FinancialExtractor, GeminiClient};
+use financial_history_builder::llm::{ExtractionEvent, FinancialExtractor};
 use financial_history_builder::{
     process_financial_history, verify_accounting_equation, AccountType, DenseSeries,
     FinancialHistoryConfig,
 };
 use futures::future;
+use gemini_structured_output::prelude::{Model, StructuredClientBuilder};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -45,26 +46,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     println!();
 
-    let client = GeminiClient::new(api_key);
-    let extractor = FinancialExtractor::new(client.clone(), "gemini-2.5-flash-preview-09-2025");
+    let client = StructuredClientBuilder::new(api_key)
+        .with_model(Model::Gemini25Flash)
+        .build()?;
+    let extractor = FinancialExtractor::new(client.clone());
 
     println!("☁️  Uploading documents to Gemini in parallel...");
     let upload_futures: Vec<_> = pdf_paths
         .iter()
-        .map(|path| client.upload_document(path))
+        .map(|path| client.file_manager.upload_and_wait(path))
         .collect();
 
     let documents = future::try_join_all(upload_futures).await?;
 
     for doc in &documents {
+        let meta = doc.get_file_meta();
         println!(
             "   ✅ Uploaded: {} ({})",
-            doc.display_name,
-            if doc.is_active() {
-                "ACTIVE"
-            } else {
-                &doc.state
-            }
+            meta.display_name.as_deref().unwrap_or(doc.name()),
+            meta.state
+                .as_ref()
+                .map(|s| format!("{s:?}"))
+                .unwrap_or_else(|| "UNKNOWN".to_string())
         );
     }
     println!();
@@ -178,7 +181,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //    Example (commented out):
     //    let supplementary_path = Path::new("examples/documents/updated_forecast.pdf");
     //    if supplementary_path.exists() {
-    //        let supplementary_doc = client.upload_document(supplementary_path).await?;
+    //        let supplementary_doc = client.file_manager.upload_and_wait(supplementary_path).await?;
     //        let mut combined_docs = documents.clone();
     //        combined_docs.push(supplementary_doc);
     //        refine_docs = combined_docs;
@@ -188,7 +191,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //    Upload and use completely new set of documents
     //    Example (commented out):
     //    let new_doc_path = Path::new("examples/documents/corrected_financials.pdf");
-    //    let new_doc = client.upload_document(new_doc_path).await?;
+    //    let new_doc = client.file_manager.upload_and_wait(new_doc_path).await?;
     //    refine_docs = vec![new_doc];
     //
     // The LLM will have access to ALL provided documents when generating patches.

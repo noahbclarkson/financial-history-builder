@@ -1,11 +1,11 @@
-use crate::error::{FinancialHistoryError, Result};
-use crate::llm::{extract_first_json_object, prompts, Content, GeminiClient, RemoteDocument};
-use crate::overrides::{AccountModification, FinancialHistoryOverrides};
+use gemini_rust::FileHandle;
+use gemini_structured_output::StructuredClient;
+use log::info;
+
+use crate::error::Result;
+use crate::llm::utils::build_prompt_parts;
+use crate::overrides::FinancialHistoryOverrides;
 use crate::schema::FinancialHistoryConfig;
-use log::{info, warn};
-use serde_json::Value;
-use std::time::Duration;
-use tokio::time::sleep;
 
 // Gold-standard example to nudge the model toward aggressive aggregation and NZ/AU structure.
 const FORECASTING_EXAMPLE: &str = r#"
@@ -68,37 +68,26 @@ const FORECASTING_EXAMPLE: &str = r#"
 "#;
 
 pub struct ForecastingSetupAgent {
-    client: GeminiClient,
-    model: String,
+    client: StructuredClient,
 }
 
 impl ForecastingSetupAgent {
-    pub fn new(client: GeminiClient, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
+    pub fn new(client: StructuredClient) -> Self {
+        Self { client }
     }
 
     /// Generates overrides using a 2-step process (Draft -> Review).
-    ///
-    /// # Arguments
-    /// * `current_config` - The raw extraction result.
-    /// * `documents` - The source documents (for context on missing items).
-    /// * `user_instruction` - Optional specific requests (e.g., "Merge cleaning and rubbish").
     pub async fn generate_overrides(
         &self,
         current_config: &FinancialHistoryConfig,
-        documents: &[RemoteDocument],
+        documents: &[FileHandle],
         user_instruction: Option<&str>,
     ) -> Result<FinancialHistoryOverrides> {
-        // --- STEP 1: GENERATE DRAFT ---
         info!("Forecasting Agent: Step 1 - Generating Draft Overrides...");
         let draft_overrides = self
             .generate_draft_overrides(current_config, documents, user_instruction)
             .await?;
 
-        // --- STEP 2: CFO REVIEW & REFINE ---
         info!("Forecasting Agent: Step 2 - CFO Review & Refinement...");
         let final_overrides = self
             .review_and_refine(current_config, &draft_overrides, documents, user_instruction)
@@ -107,14 +96,12 @@ impl ForecastingSetupAgent {
         Ok(final_overrides)
     }
 
-    /// Step 1: The "Junior Analyst" Logic - Generates draft overrides
     async fn generate_draft_overrides(
         &self,
         current_config: &FinancialHistoryConfig,
-        documents: &[RemoteDocument],
+        documents: &[FileHandle],
         user_instruction: Option<&str>,
     ) -> Result<FinancialHistoryOverrides> {
-        let schema_json_value = FinancialHistoryOverrides::get_gemini_response_schema()?;
         let current_state = serde_json::to_string_pretty(current_config)?;
 
         let system_prompt = format!(
@@ -220,234 +207,58 @@ Return a valid JSON object matching the `FinancialHistoryOverrides` schema.
             user_instruction.unwrap_or("Clean up fixed assets and ensure all standard trading accounts exist.")
         );
 
-        self.call_llm_with_retry(
-            &system_prompt,
-            &user_prompt,
-            documents,
-            Some(schema_json_value),
-            "Forecasting_Draft",
-        )
-        .await
+        let parts = build_prompt_parts(&user_prompt, documents)?;
+        let outcome = self
+            .client
+            .request::<FinancialHistoryOverrides>()
+            .system(system_prompt)
+            .user_parts(parts)
+            .execute()
+            .await?;
+
+        Ok(outcome.value)
     }
 
-    /// Step 2: The "CFO" Logic - Reviews and refines the draft
     async fn review_and_refine(
         &self,
         raw_config: &FinancialHistoryConfig,
         draft: &FinancialHistoryOverrides,
-        documents: &[RemoteDocument],
+        documents: &[FileHandle],
         user_instruction: Option<&str>,
     ) -> Result<FinancialHistoryOverrides> {
-        let schema_json_value = FinancialHistoryOverrides::get_gemini_response_schema()?;
-
         let raw_json = serde_json::to_string_pretty(raw_config)?;
         let draft_json = serde_json::to_string_pretty(draft)?;
 
-        let system_prompt = prompts::SYSTEM_PROMPT_FORECAST_REVIEW;
+        let system_prompt = r#"
+You are a CFO reviewing the proposed overrides for a 3-way forecast.
+Your task is to refine the draft for correctness, completeness, and professional structure.
+Focus on ensuring:
+- One and only one balancing account (Cash preferred)
+- No duplicate or conflicting modifications
+- Reasonable estimates for missing accounts
+- Clear, concise account names
+Return the final overrides as JSON matching the FinancialHistoryOverrides schema.
+"#;
 
         let user_prompt = format!(
-            "## 1. RAW EXTRACTED DATA\n```json\n{}\n```\n\n\
-             ## 2. JUNIOR ANALYST DRAFT OVERRIDES\n```json\n{}\n```\n\n\
-             ## 3. USER INSTRUCTION (If Any)\n{}\n\n\
-             ## YOUR TASK (CFO REVIEW)\n\
-             Review the Draft Overrides against the Raw Data and Documents. Your job is to catch mistakes and ensure financial completeness.\n\n\
-             **CRITICAL CHECKS (in order of priority):**\n\
-             1. **DUPLICATE CHECK:** Did the draft add accounts that already exist in the raw data? Remove duplicate additions immediately.\n\
-             2. **BALANCING ACCOUNT:** Did the draft set Retained Earnings (or any equity account) as the balancing account? **FIX THIS!** Change it to the Cash account.\n\
-             3. **STRUCTURAL COMPLETENESS:** Consider what accounts might be missing (e.g., GST/VAT, AR, AP, Current Year Earnings, Income Tax Provision, Accumulated Depreciation, Intangible Assets like Goodwill, industry-specific accounts, etc.). Add any that are genuinely needed with realistic estimates.\n\
-             4. **THINK HOLISTICALLY:** Beyond the standard list, what other accounts does THIS specific business need based on industry, business model, and available data?\n\
-             5. **FIXED ASSETS:** Verify all granular assets were merged into clean pools.\n\
-             6. **CATEGORY STANDARDIZATION:** Ensure category names are professional (e.g., 'Current Assets', 'Non-Current Liabilities').\n\n\
-             Output the FINAL, corrected overrides JSON that supersedes the draft.",
+            "## RAW CONFIG\n```json\n{}\n```\n\n\
+             ## DRAFT OVERRIDES\n```json\n{}\n```\n\n\
+             ## USER INSTRUCTION\n{}\n\n\
+             Please review and refine the draft overrides to produce the final set.",
             raw_json,
             draft_json,
-            user_instruction.unwrap_or("Ensure full financial integrity.")
+            user_instruction.unwrap_or("No additional instructions.")
         );
 
-        self.call_llm_with_retry(
-            system_prompt,
-            &user_prompt,
-            documents,
-            Some(schema_json_value),
-            "Forecasting_Review",
-        )
-        .await
-    }
+        let parts = build_prompt_parts(&user_prompt, documents)?;
+        let outcome = self
+            .client
+            .request::<FinancialHistoryOverrides>()
+            .system(system_prompt)
+            .user_parts(parts)
+            .execute()
+            .await?;
 
-    /// Helper for robust LLM calls with retry logic
-    async fn call_llm_with_retry(
-        &self,
-        system_prompt: &str,
-        user_prompt: &str,
-        documents: &[RemoteDocument],
-        schema: Option<Value>,
-        label: &str,
-    ) -> Result<FinancialHistoryOverrides> {
-        let mut last_error: Option<String> = None;
-        let max_retries = 3;
-
-        for attempt in 1..=max_retries {
-            let mut prompt_with_context = user_prompt.to_string();
-            if let Some(err) = &last_error {
-                prompt_with_context.push_str(&format!(
-                    "\n\n## PREVIOUS ATTEMPT ISSUE\n{}\n\
-                     Please return STRICT JSON matching the `FinancialHistoryOverrides` schema, \
-                     ensuring every modification includes an `action` field.",
-                    err
-                ));
-            }
-
-            let messages = vec![Content::user_with_files(prompt_with_context, documents)];
-
-            match self
-                .client
-                .generate_content(
-                    &self.model,
-                    system_prompt,
-                    messages,
-                    schema.clone(),
-                    "application/json",
-                    &format!("{}_attempt_{}", label, attempt),
-                )
-                .await
-            {
-                Ok(response) => {
-                    let cleaned_json = extract_first_json_object(&response);
-                    match serde_json::from_str::<FinancialHistoryOverrides>(&cleaned_json) {
-                        Ok(overrides) => return Ok(overrides),
-                        Err(e) => {
-                            warn!("{} attempt {} failed to parse: {}", label, attempt, e);
-                            if attempt == max_retries {
-                                // Last-ditch salvage: try to coerce partial JSON into overrides
-                                if let Ok(value) = serde_json::from_str::<Value>(&cleaned_json) {
-                                    if let Some(overrides) = salvage_overrides_from_value(&value) {
-                                        warn!("{} salvaged from partial JSON after parse failure.", label);
-                                        return Ok(overrides);
-                                    }
-                                }
-                                return Err(FinancialHistoryError::SerializationError(e));
-                            }
-                            last_error = Some(format!("Parsing failed: {}", e));
-                        }
-                    }
-                }
-                Err(e) => {
-                    warn!("{} attempt {} API failed: {}", label, attempt, e);
-                    if attempt == max_retries {
-                        return Err(e);
-                    }
-                    last_error = Some(e.to_string());
-                }
-            }
-
-            // Exponential-ish backoff between retries
-            sleep(Duration::from_secs(2 * attempt as u64)).await;
-        }
-
-        Err(FinancialHistoryError::ExtractionFailed(format!(
-            "{} exhausted retries. Last error: {:?}",
-            label, last_error
-        )))
-    }
-}
-
-fn salvage_overrides_from_value(value: &Value) -> Option<FinancialHistoryOverrides> {
-    let mut overrides = FinancialHistoryOverrides::default();
-
-    if let Some(bs_val) = value.get("new_balance_sheet_accounts") {
-        if let Ok(bs) = serde_json::from_value(bs_val.clone()) {
-            overrides.new_balance_sheet_accounts = bs;
-        }
-    }
-
-    if let Some(is_val) = value.get("new_income_statement_accounts") {
-        if let Ok(is_accs) = serde_json::from_value(is_val.clone()) {
-            overrides.new_income_statement_accounts = is_accs;
-        }
-    }
-
-    if let Some(mods_val) = value.get("modifications").and_then(|v| v.as_array()) {
-        for mv in mods_val {
-            if let Some(modification) = coerce_modification(mv) {
-                overrides.modifications.push(modification);
-            }
-        }
-    }
-
-    Some(overrides)
-}
-
-fn coerce_modification(value: &Value) -> Option<AccountModification> {
-    let obj = value.as_object()?;
-    let action = obj
-        .get("action")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_lowercase())?;
-
-    match action.as_str() {
-        "rename" => {
-            let target = obj.get("target")?.as_str()?.to_string();
-            let new_name = obj.get("new_name")?.as_str()?.to_string();
-            Some(AccountModification::Rename { target, new_name })
-        }
-        "merge" => {
-            let sources: Vec<String> = obj
-                .get("sources")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|s| s.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let target_name = obj.get("target_name")?.as_str()?.to_string();
-            if sources.is_empty() {
-                None
-            } else {
-                Some(AccountModification::Merge {
-                    sources,
-                    target_name,
-                })
-            }
-        }
-        "update_metadata" | "modify" => {
-            let target = obj.get("target")?.as_str()?.to_string();
-            let new_category = obj
-                .get("new_category")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let new_type = obj
-                .get("new_type")
-                .and_then(|v| serde_json::from_value(v.clone()).ok());
-            let new_is_balancing_account = obj
-                .get("new_is_balancing_account")
-                .and_then(|v| v.as_bool());
-            Some(AccountModification::UpdateMetadata {
-                target,
-                new_category,
-                new_type,
-                new_is_balancing_account,
-            })
-        }
-        "delete" => {
-            let target = obj.get("target")?.as_str()?.to_string();
-            Some(AccountModification::Delete { target })
-        }
-        "scale_values" | "scale" => {
-            let target = obj.get("target")?.as_str()?.to_string();
-            let factor = obj.get("factor")?.as_f64()?;
-            Some(AccountModification::ScaleValues { target, factor })
-        }
-        "set_value" | "set" => {
-            let target = obj.get("target")?.as_str()?.to_string();
-            let date_or_period = obj.get("date_or_period")?.as_str()?.to_string();
-            let value = obj.get("value")?.as_f64()?;
-            Some(AccountModification::SetValue {
-                target,
-                date_or_period,
-                value,
-            })
-        }
-        _ => None,
+        Ok(outcome.value)
     }
 }

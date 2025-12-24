@@ -1,6 +1,7 @@
 use dotenv::dotenv;
-use financial_history_builder::llm::{FinancialExtractor, ForecastingSetupAgent, GeminiClient};
+use financial_history_builder::llm::{FinancialExtractor, ForecastingSetupAgent};
 use financial_history_builder::{process_financial_history, AccountType, DenseSeries};
+use gemini_structured_output::prelude::{Model, StructuredClientBuilder};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::path::Path;
@@ -15,9 +16,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("═══════════════════════════════════════════════════════════════\n");
 
     // 1. Setup Clients
-    let client = GeminiClient::new(api_key);
-    let extractor = FinancialExtractor::new(client.clone(), "gemini-2.5-flash-preview-09-2025");
-    let forecaster = ForecastingSetupAgent::new(client.clone(), "gemini-2.5-flash-preview-09-2025");
+    let client = StructuredClientBuilder::new(api_key)
+        .with_model(Model::Gemini25Flash)
+        .build()?;
+    let extractor = FinancialExtractor::new(client.clone());
+    let forecaster = ForecastingSetupAgent::new(client.clone());
 
     // 2. Load Documents
     let doc_dir = Path::new("examples").join("documents");
@@ -45,12 +48,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("📤 Uploading documents...");
     let upload_futures: Vec<_> = pdf_paths
         .iter()
-        .map(|path| client.upload_document(path))
+        .map(|path| client.file_manager.upload_and_wait(path))
         .collect();
 
     let docs = futures::future::try_join_all(upload_futures).await?;
     for doc in &docs {
-        println!("   ✅ Uploaded: {}", doc.display_name);
+        let name = doc
+            .get_file_meta()
+            .display_name
+            .as_deref()
+            .unwrap_or(doc.name());
+        println!("   ✅ Uploaded: {}", name);
     }
     println!();
 
