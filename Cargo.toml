@@ -18,8 +18,8 @@ thiserror = "2.0.17"
 log = "0.4"
 futures = "0.3"
 tokio = { version = "1", features = ["full"] }
-gemini-structured-output = { path = "../gemini-structured-output" }
-gemini-rust = { path = "../gemini-rust" }
+gemini-structured-output = { git = "https://github.com/noahbclarkson/gemini-structured-output", branch = "main" }
+gemini-rust = { git = "https://github.com/noahbclarkson/gemini-rust", branch = "file-handle-feature" }
 
 [dev-dependencies]
 anyhow = "1.0"
