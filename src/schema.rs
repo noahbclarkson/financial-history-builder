@@ -323,7 +323,7 @@ pub struct FinancialHistoryConfig {
 }
 
 impl FinancialHistoryConfig {
-    pub fn generate_json_schema() -> schemars::schema::RootSchema {
+    pub fn generate_json_schema() -> schemars::Schema {
         schemars::schema_for!(FinancialHistoryConfig)
     }
 
@@ -334,14 +334,13 @@ impl FinancialHistoryConfig {
     }
 
     /// Shared schema cleaning logic that can be reused by other types
-    pub fn clean_schema(
-        root: schemars::schema::RootSchema,
-    ) -> serde_json::Result<serde_json::Value> {
+    pub fn clean_schema(root: schemars::Schema) -> serde_json::Result<serde_json::Value> {
         let mut root_val = serde_json::to_value(root)?;
 
         // 1. Extract definitions map
         let definitions = root_val
-            .get("definitions")
+            .get("$defs")
+            .or_else(|| root_val.get("definitions"))
             .cloned()
             .unwrap_or(serde_json::json!({}));
 
