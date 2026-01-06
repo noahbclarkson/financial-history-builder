@@ -4,7 +4,7 @@ use crate::seasonality::{get_profile_weights, rotate_weights_for_fiscal_year};
 use crate::utils::get_month_ends_in_period;
 use crate::{DataOrigin, DenseSeries, DerivationDetails, MonthlyDataPoint};
 use chrono::{Datelike, NaiveDate};
-use rand::thread_rng;
+use rand::rng;
 use rand_distr::{Distribution, Normal};
 use splines::{Interpolation, Key, Spline};
 use std::collections::BTreeMap;
@@ -62,7 +62,7 @@ impl Densifier {
         let dates = get_month_ends_in_period(start, end);
 
         let mut series = BTreeMap::new();
-        let mut rng = thread_rng();
+        let mut rng = rng();
         let noise_factor = account.noise_factor;
 
         for date in dates {
@@ -164,7 +164,7 @@ impl Densifier {
 
         resolved_constraints.sort_by_key(|(s, e, _)| (*e - *s).num_days());
 
-        let mut rng = thread_rng();
+        let mut rng = rng();
         let noise = account.noise_factor;
 
         for (start_date, end_date, constraint) in resolved_constraints {

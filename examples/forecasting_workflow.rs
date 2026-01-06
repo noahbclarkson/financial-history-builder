@@ -233,7 +233,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let base_name = docs
         .first()
         .and_then(|d| {
-            Path::new(&d.display_name)
+            Path::new(d.name())
                 .file_stem()
                 .and_then(|s| s.to_str())
         })

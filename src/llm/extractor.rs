@@ -128,10 +128,7 @@ impl FinancialExtractor {
                 }
                 context
             })
-            .with_validator(|cfg| match validate_financial_logic(cfg) {
-                Ok(()) => None,
-                Err(err) => Some(err),
-            })
+            .with_validator(|cfg| validate_financial_logic(cfg).err())
             .execute()
             .await?;
 
@@ -328,10 +325,7 @@ impl FinancialExtractor {
                 }
                 context
             })
-            .with_validator(|cfg| match validate_financial_logic(cfg) {
-                Ok(()) => None,
-                Err(err) => Some(err),
-            })
+            .with_validator(|cfg| validate_financial_logic(cfg).err())
             .execute()
             .await?;
 

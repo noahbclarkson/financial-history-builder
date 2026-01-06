@@ -202,7 +202,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Clone necessary values for the refinement task
     let refine_extractor =
-        FinancialExtractor::new(client.clone(), "gemini-2.5-flash-preview-09-2025");
+        FinancialExtractor::new(client.clone());
     let refine_instruction = demo_instruction.to_string();
     let refine_config = config.clone();
 
