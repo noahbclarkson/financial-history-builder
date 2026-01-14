@@ -1,6 +1,6 @@
 # Financial History Builder Examples
 
-These examples use `gemini-structured-output` to produce strongly typed extraction and refinement outputs.
+These examples use `rstructor` to produce strongly typed extraction and refinement outputs.
 
 ## Prerequisites
 
@@ -9,16 +9,18 @@ These examples use `gemini-structured-output` to produce strongly typed extracti
 
 ## Setup
 
-Set `GEMINI_API_KEY` in your environment:
+Set `GEMINI_API_KEY` and `GEMINI_FILE_URIS` in your environment:
 
 ```bash
 export GEMINI_API_KEY="your_gemini_api_key_here"
+export GEMINI_FILE_URIS="https://generativelanguage.googleapis.com/v1beta/files/FILE_NAME_1,https://generativelanguage.googleapis.com/v1beta/files/FILE_NAME_2"
 ```
 
 Or create a `.env` file in the project root:
 
 ```
 GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_FILE_URIS=https://generativelanguage.googleapis.com/v1beta/files/FILE_NAME_1,https://generativelanguage.googleapis.com/v1beta/files/FILE_NAME_2
 ```
 
 ## Run Examples
@@ -29,4 +31,4 @@ cargo run --example chat_with_docs
 cargo run --example forecasting_workflow
 ```
 
-Each example expects PDFs in `examples/documents/`.
+Each example expects Gemini file URIs for the PDFs listed in `GEMINI_FILE_URIS`.

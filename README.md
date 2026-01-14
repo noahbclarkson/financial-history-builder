@@ -29,7 +29,7 @@ To build a financial forecast, you need **dense** data: a specific value for eve
 * **Smart Interpolation:** Generates monthly balance sheet positions using Linear, Step, or Catmull-Rom Spline interpolation.
 * **Seasonality Profiles:** Applies realistic curves (Retail Peak, SaaS Growth, Summer High) to distribute revenue/expenses accurately.
 * **Accounting Integrity:** Automatically enforces $Assets = Liabilities + Equity$ by calculating a balancing plug (usually Cash or Equity).
-* **LLM Ready:** Generates strict JSON Schemas (`schemars`) to force AI models (Gemini, GPT-4) to output data in the exact format the engine requires.
+* **LLM Ready:** Generates strict JSON Schemas (via `rstructor`) to force AI models (Gemini, GPT-4) to output data in the exact format the engine requires.
 
 ---
 
@@ -161,21 +161,23 @@ fn main() -> Result<()> {
 
 ## 🤖 AI & LLM Integration
 
-This library ships with a `llm` module that uses `gemini-structured-output` for strongly typed extraction, refinement, and forecasting setup.
+This library ships with a `llm` module that uses `rstructor` for strongly typed extraction, refinement, and forecasting setup.
 
-### 1. Typed Extraction with Gemini Structured Output
+### 1. Typed Extraction with Gemini (rstructor)
 
 ```rust
-use financial_history_builder::llm::FinancialExtractor;
-use gemini_structured_output::prelude::{Model, StructuredClientBuilder};
+use financial_history_builder::llm::{DocumentReference, FinancialExtractor};
+use rstructor::{GeminiClient, GeminiModel, MediaFile};
 
 # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-let client = StructuredClientBuilder::new("your-api-key")
-    .with_model(Model::Gemini25Flash)
-    .build()?;
+let client = GeminiClient::new("your-api-key")?
+    .model(GeminiModel::Gemini25Flash);
 
 let extractor = FinancialExtractor::new(client.clone());
-let docs = vec![client.file_manager.upload_and_wait("examples/documents/report.pdf").await?];
+let docs = vec![DocumentReference::new(
+    MediaFile::new("https://generativelanguage.googleapis.com/v1beta/files/your-file-id", "application/pdf"),
+    "report.pdf",
+)];
 
 let config = extractor.extract(&docs, None).await?;
 println!("Extracted {} accounts", config.balance_sheet.len());

@@ -792,9 +792,9 @@ fn test_schema_generation() {
 
     assert!(schema_json.contains("organization_name"));
     assert!(schema_json.contains("fiscal_year_end_month"));
-    assert!(schema_json.contains("AccountType"));
-    assert!(schema_json.contains("SeasonalityProfileId"));
-    assert!(schema_json.contains("is_balancing_account"));
+    assert!(schema_json.contains("balance_sheet"));
+    assert!(schema_json.contains("income_statement"));
+    assert!(schema_json.contains("account_type"));
 
     println!("✓ Schema generation test passed - output: schema_output.json");
 }

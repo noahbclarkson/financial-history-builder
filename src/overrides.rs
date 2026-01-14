@@ -3,41 +3,41 @@ use crate::schema::{
     IncomeStatementAccount, PeriodConstraint,
 };
 use chrono::NaiveDate;
-use schemars::JsonSchema;
+use rstructor::{Instructor, SchemaType};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// The master container for all strategic adjustments.
 /// This struct is serialized to JSON Schema and passed to the LLM.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Instructor, Default)]
 pub struct FinancialHistoryOverrides {
-    #[schemars(
+    #[llm(
         description = "List of NEW Balance Sheet accounts to create. Use this to populate missing items found in the documents (e.g., GST Payable, Loans, Fixed Assets) that were missed in the initial extraction."
     )]
     #[serde(default)]
     pub new_balance_sheet_accounts: Vec<BalanceSheetAccount>,
 
-    #[schemars(
+    #[llm(
         description = "List of NEW Income Statement accounts to create. Use this to split aggregated accounts or add revenue streams found in narrative text."
     )]
     #[serde(default)]
     pub new_income_statement_accounts: Vec<IncomeStatementAccount>,
 
-    #[schemars(
+    #[llm(
         description = "Ordered list of modifications to apply to accounts. These are applied AFTER new accounts are added."
     )]
     #[serde(default)]
     pub modifications: Vec<AccountModification>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Instructor)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum AccountModification {
     /// Rename an account (e.g., 'Telco' -> 'Telephone & Internet').
     Rename {
-        #[schemars(description = "The exact current name of the account.")]
+        #[llm(description = "The exact current name of the account.")]
         target: String,
-        #[schemars(description = "The new name.")]
+        #[llm(description = "The new name.")]
         new_name: String,
     },
 
@@ -45,9 +45,9 @@ pub enum AccountModification {
     /// - BS: Sums snapshots on matching dates.
     /// - IS: Collects all period constraints into the target.
     Merge {
-        #[schemars(description = "List of account names to merge FROM. These will be deleted.")]
+        #[llm(description = "List of account names to merge FROM. These will be deleted.")]
         sources: Vec<String>,
-        #[schemars(
+        #[llm(
             description = "The account name to merge INTO. If it doesn't exist, it will be created using properties from the first source."
         )]
         target_name: String,
@@ -55,13 +55,13 @@ pub enum AccountModification {
 
     /// Change the category, account type, or balancing account flag.
     UpdateMetadata {
-        #[schemars(description = "The account name.")]
+        #[llm(description = "The account name.")]
         target: String,
-        #[schemars(description = "New category string (optional).")]
+        #[llm(description = "New category string (optional).")]
         new_category: Option<String>,
-        #[schemars(description = "New account type (optional).")]
+        #[llm(description = "New account type (optional).")]
         new_type: Option<AccountType>,
-        #[schemars(
+        #[llm(
             description = "Set whether this account is the balancing account (optional). CRITICAL: Only ONE account should have this set to true. Use this to change the balancing account from Retained Earnings to Cash."
         )]
         new_is_balancing_account: Option<bool>,
@@ -78,7 +78,7 @@ pub enum AccountModification {
     /// - IS: Adds a constraint for the period.
     SetValue {
         target: String,
-        #[schemars(
+        #[llm(
             description = "YYYY-MM-DD for BS snapshot, or 'YYYY-MM'/'YYYY-MM:YYYY-MM' for IS constraint."
         )]
         date_or_period: String,
@@ -111,9 +111,7 @@ impl FinancialHistoryOverrides {
 
     /// Generates a Gemini-compatible JSON schema (no $ref, $schema, or definitions)
     pub fn get_gemini_response_schema() -> serde_json::Result<serde_json::Value> {
-        // Use the same cleaning logic from FinancialHistoryConfig
-        let root = schemars::schema_for!(FinancialHistoryOverrides);
-        FinancialHistoryConfig::clean_schema(root)
+        Ok(Self::schema().to_json())
     }
 }
 

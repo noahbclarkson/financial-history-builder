@@ -1,33 +1,15 @@
 use std::collections::HashMap;
 
-use gemini_rust::{FileHandle, Part};
-use gemini_structured_output::FileManager;
+use rstructor::MediaFile;
 
-use crate::error::Result;
+use crate::llm::types::DocumentReference;
 
-pub fn build_prompt_parts(prompt: &str, documents: &[FileHandle]) -> Result<Vec<Part>> {
-    let mut parts = Vec::with_capacity(documents.len() + 1);
-    parts.push(Part::Text {
-        text: prompt.to_string(),
-        thought: None,
-        thought_signature: None,
-    });
-    for handle in documents {
-        parts.push(FileManager::as_part(handle)?);
-    }
-    Ok(parts)
-}
-
-pub fn document_display_name(handle: &FileHandle) -> String {
-    handle
-        .get_file_meta()
-        .display_name
-        .clone()
-        .unwrap_or_else(|| handle.name().to_string())
+pub fn document_media(documents: &[DocumentReference]) -> Vec<MediaFile> {
+    documents.iter().map(|doc| doc.media.clone()).collect()
 }
 
 pub fn create_document_manifest(
-    documents: &[FileHandle],
+    documents: &[DocumentReference],
 ) -> (String, HashMap<String, String>) {
     let mut manifest = String::from(
         "═══════════════════════════════════════════════════════════════════\n\
@@ -38,7 +20,7 @@ pub fn create_document_manifest(
 
     for (i, doc) in documents.iter().enumerate() {
         let id = i.to_string();
-        let display_name = document_display_name(doc);
+        let display_name = doc.display_name.clone();
         manifest.push_str(&format!(
             "  Document ID: {}  →  \"{}\"\n",
             id, display_name

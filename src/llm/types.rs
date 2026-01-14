@@ -1,4 +1,4 @@
-use schemars::JsonSchema;
+use rstructor::{Instructor, MediaFile};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,7 +17,23 @@ pub enum ExtractionEvent {
     Failed { reason: String },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Instructor)]
 pub struct MarkdownResponse {
     pub markdown: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct DocumentReference {
+    pub media: MediaFile,
+    pub display_name: String,
+}
+
+impl DocumentReference {
+    #[must_use]
+    pub fn new(media: MediaFile, display_name: impl Into<String>) -> Self {
+        Self {
+            media,
+            display_name: display_name.into(),
+        }
+    }
 }

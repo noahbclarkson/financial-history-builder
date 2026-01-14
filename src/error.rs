@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use gemini_structured_output::StructuredError;
+use rstructor::RStructorError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -43,8 +43,8 @@ pub enum FinancialHistoryError {
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
-    #[error("Gemini structured output error: {0}")]
-    StructuredOutput(#[from] StructuredError),
+    #[error("RStructor error: {0}")]
+    RStructor(#[from] RStructorError),
 
     #[error("Extraction failed: {0}")]
     ExtractionFailed(String),

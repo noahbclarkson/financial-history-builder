@@ -1,204 +1,206 @@
 use chrono::NaiveDate;
-use schemars::JsonSchema;
+use rstructor::{Instructor, RStructorError, SchemaType};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 use crate::error::Result as FHResult;
 use crate::utils::parse_period_string;
+use crate::{process_financial_history, verify_accounting_equation};
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Instructor)]
 pub struct SourceMetadata {
-    #[schemars(
+    #[llm(
         description = "The Document ID from the manifest (e.g., \"0\", \"1\", \"2\"). Use ONLY the numeric ID, not the filename."
     )]
     #[serde(rename = "document")]
     pub document_name: String,
 
-    #[schemars(
+    #[llm(
         description = "Optional context about where this value was found. This is serialized as `text`. ONLY required if: (1) the source row/line label differs from the account name, OR (2) the value was extracted from narrative text rather than a labeled table row. If the account name exactly matches the row label in a financial table, you may omit this field."
     )]
     #[serde(rename = "text")]
     pub original_text: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Instructor)]
 #[serde(rename_all = "PascalCase")]
 pub enum AccountType {
-    #[schemars(
+    #[llm(
         description = "Revenue from sales of goods or services (Income Statement, credit balance)"
     )]
     Revenue,
 
-    #[schemars(
+    #[llm(
         description = "Direct costs attributable to production of goods sold (Income Statement, debit balance)"
     )]
     CostOfSales,
 
-    #[schemars(
+    #[llm(
         description = "Operating expenses like salaries, rent, marketing, utilities (Income Statement, debit balance)"
     )]
     OperatingExpense,
 
-    #[schemars(
+    #[llm(
         description = "Non-operating income such as interest income, investment gains (Income Statement, credit balance)"
     )]
     OtherIncome,
 
-    #[schemars(description = "Interest expense (finance costs) (Income Statement, debit balance)")]
+    #[llm(description = "Interest expense (finance costs) (Income Statement, debit balance)")]
     Interest,
 
-    #[schemars(
+    #[llm(
         description = "Depreciation and Amortisation expense (Income Statement, debit balance)"
     )]
     Depreciation,
 
-    #[schemars(
+    #[llm(
         description = "Shareholder or Director salaries (distinct from standard wages) (Income Statement, debit balance)"
     )]
     ShareholderSalaries,
 
-    #[schemars(
+    #[llm(
         description = "Income Tax Expense (Corporate Tax) (Income Statement, debit balance)"
     )]
     IncomeTax,
 
-    #[schemars(
+    #[llm(
         description = "Resources owned by the company: cash, accounts receivable, inventory, equipment (Balance Sheet, debit balance)"
     )]
     Asset,
 
-    #[schemars(
+    #[llm(
         description = "Obligations owed to creditors: accounts payable, loans, accrued expenses (Balance Sheet, credit balance)"
     )]
     Liability,
 
-    #[schemars(
+    #[llm(
         description = "Owner's residual interest: share capital, retained earnings (Balance Sheet, credit balance)"
     )]
     Equity,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Instructor)]
 #[serde(rename_all = "PascalCase")]
 pub enum SeasonalityProfileId {
-    #[schemars(
+    #[llm(
         description = "Evenly distributed across all 12 months (8.33% per month). Use when there's no known seasonality."
     )]
     Flat,
 
-    #[schemars(
+    #[llm(
         description = "Retail pattern: Low Jan-Nov (~6% per month), massive spike in December (~40%). Think Black Friday/Christmas sales."
     )]
     RetailPeak,
 
-    #[schemars(
+    #[llm(
         description = "Summer tourism pattern: Low in Q1 (5% each), high in Q2/Q3 (12% each), moderate Q4 (7% each). For hospitality, travel, outdoor recreation."
     )]
     SummerHigh,
 
-    #[schemars(
+    #[llm(
         description = "SaaS growth pattern: Back-loaded within the fiscal year, simulating gradual customer acquisition. Starts at 6% in month 1, ramps to 10% by month 12."
     )]
     SaasGrowth,
 
-    #[schemars(
+    #[llm(
         description = "Custom 12-value array representing the percentage weight for each month (must sum to 1.0). Month 1 is the first month after the fiscal year end."
     )]
     Custom(
-        #[schemars(
+        #[llm(
             description = "Array of 12 decimal values representing monthly weights (must sum to 1.0)"
         )]
         Vec<f64>,
     ),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Instructor)]
 pub struct BalanceSheetSnapshot {
-    #[schemars(description = "The date of the snapshot (e.g., 2023-12-31). Use month-end dates.")]
+    #[llm(description = "The date of the snapshot (e.g., 2023-12-31). Use month-end dates.")]
     pub date: NaiveDate,
 
-    #[schemars(
+    #[llm(
         description = "The value of the account on this specific date (point-in-time balance)"
     )]
     pub value: f64,
 
     #[serde(default)]
-    #[schemars(description = "Metadata to trace this value back to the source document.")]
+    #[llm(description = "Metadata to trace this value back to the source document.")]
     pub source: Option<SourceMetadata>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Instructor)]
 #[serde(rename_all = "PascalCase")]
 pub enum InterpolationMethod {
-    #[schemars(
+    #[llm(
         description = "Draw straight lines between snapshots. Good for accounts that change steadily."
     )]
     Linear,
 
-    #[schemars(
+    #[llm(
         description = "Hold value until it changes. Ideal for accounts that remain constant between snapshots."
     )]
     Step,
 
-    #[schemars(
+    #[llm(
         description = "Smooth curve (Catmull-Rom) between snapshots. Best for organic changes in balance sheet accounts."
     )]
     Curve,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Instructor)]
 pub struct BalanceSheetAccount {
-    #[schemars(
+    #[llm(
         description = "The specific account name. IMPORTANT: Extract LEAF nodes only. DO NOT extract subtotal lines like 'Total Assets', 'Total Liabilities', 'Current Assets', or 'Fixed Assets'. Only extract the specific items listed under them (e.g., 'Cash at Bank', 'Accounts Receivable')."
     )]
     pub name: String,
 
     #[serde(default)]
-    #[schemars(
+    #[llm(
         description = "The specific subcategory header this account appears under in the report (e.g., 'Current Assets', 'Non-Current Liabilities', 'Fixed Assets')."
     )]
     pub category: Option<String>,
 
-    #[schemars(description = "The type of account (Asset, Liability, or Equity)")]
+    #[llm(description = "The type of account (Asset, Liability, or Equity)")]
     pub account_type: AccountType,
 
-    #[schemars(description = "How to interpolate values between snapshots")]
+    #[llm(description = "How to interpolate values between snapshots")]
     pub method: InterpolationMethod,
 
-    #[schemars(
+    #[llm(
         description = "Array of known balance sheet snapshots. Must have at least one snapshot. These are point-in-time balances, not cumulative totals."
     )]
     pub snapshots: Vec<BalanceSheetSnapshot>,
 
     #[serde(default)]
-    #[schemars(
+    #[llm(
         description = "If true, this account will be used as the balancing account to enforce the accounting equation (Assets = Liabilities + Equity). Typically set for Cash or Retained Earnings. Only ONE account should have this flag set to true."
     )]
     pub is_balancing_account: bool,
 
     #[serde(default)]
-    #[schemars(
+    #[llm(
         description = "Optional variance to add realistic noise. Range: 0.0 (no noise) to 0.1 (10% random variation). Defaults to 0.0. Use 0.0 for fixed items. Use 0.01-0.02 for stable balance sheet accounts."
     )]
     #[serde(rename = "noise")]
     pub noise_factor: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Instructor)]
 pub struct PeriodConstraint {
-    #[schemars(description = "Time period string. \
+    #[llm(description = "Time period string. \
         For a SINGLE month, use 'YYYY-MM' (e.g. '2023-03'). \
         For a RANGE, use 'YYYY-MM:YYYY-MM' (e.g. '2023-01:2023-12'). \
         IMPORTANT: Ranges are INCLUSIVE. '2023-03:2023-04' means the sum of March AND April. \
         DO NOT use a range for a single month.")]
     pub period: String,
 
-    #[schemars(
+    #[llm(
         description = "Total value generated during this specific period. If the document lists 'Gross Profit' or 'Net Income', DO NOT extract them. Only extract Revenue and specific Expense categories. You can provide overlapping periods (e.g., a month total AND a quarter total AND a year total). The engine will solve them hierarchically."
     )]
     pub value: f64,
 
     #[serde(default)]
-    #[schemars(description = "Metadata to trace this value back to the source document.")]
+    #[llm(description = "Metadata to trace this value back to the source document.")]
     pub source: Option<SourceMetadata>,
 }
 
@@ -209,31 +211,31 @@ impl PeriodConstraint {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Instructor)]
 pub struct IncomeStatementAccount {
-    #[schemars(
+    #[llm(
         description = "The account name (e.g., 'Revenue', 'Salaries'). DO NOT extract 'Total Operating Expenses', 'Gross Profit', 'Net Income', or 'EBITDA'. Extraction should be granular - extract individual revenue and expense line items only."
     )]
     pub name: String,
 
-    #[schemars(
+    #[llm(
         description = "The type of account (Revenue, CostOfSales, OperatingExpense, or OtherIncome)"
     )]
     pub account_type: AccountType,
 
-    #[schemars(
+    #[llm(
         description = "Defines the shape of the data when filling in gaps between constraints. This determines how the engine distributes values across months."
     )]
     #[serde(rename = "seasonality")]
     pub seasonality_profile: SeasonalityProfileId,
 
-    #[schemars(
+    #[llm(
         description = "List of known totals for specific periods (Months, Quarters, or Years). You can and should provide overlapping periods - the engine will solve them hierarchically. For example, provide both a monthly total AND a quarterly total AND a yearly total if available."
     )]
     pub constraints: Vec<PeriodConstraint>,
 
     #[serde(default)]
-    #[schemars(
+    #[llm(
         description = "Optional variance to add realistic noise. Range: 0.0 (no noise) to 0.1 (10% random variation). Defaults to 0.0. Use 0.0 for fixed costs. Use 0.03-0.05 for normal revenues/expenses."
     )]
     #[serde(rename = "noise")]
@@ -242,30 +244,30 @@ pub struct IncomeStatementAccount {
 
 // --- Intermediate Schemas for Multi-Step Extraction ---
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Instructor)]
 pub struct DiscoveryResponse {
-    #[schemars(description = "The legal name of the organization")]
+    #[llm(description = "The legal name of the organization")]
     pub organization_name: String,
 
-    #[schemars(description = "The month when the fiscal year ends (1-12)")]
+    #[llm(description = "The month when the fiscal year ends (1-12)")]
     pub fiscal_year_end_month: u32,
 
-    #[schemars(
+    #[llm(
         description = "The logical start date for the financial history (YYYY-MM-DD). Pick the start of the earliest fiscal year present in the columns (e.g., if 2022 and 2023 columns exist, use 2022-01-01)."
     )]
     pub forecast_start_date: Option<NaiveDate>,
 
-    #[schemars(
+    #[llm(
         description = "The logical end date for the financial history (YYYY-MM-DD). Usually the date of the latest balance sheet."
     )]
     pub forecast_end_date: Option<NaiveDate>,
 
-    #[schemars(
+    #[llm(
         description = "List of ALL unique Balance Sheet account names found. Leaf nodes only."
     )]
     pub balance_sheet_account_names: Vec<String>,
 
-    #[schemars(
+    #[llm(
         description = "List of ALL unique Income Statement account names found. Leaf nodes only."
     )]
     pub income_statement_account_names: Vec<String>,
@@ -273,79 +275,122 @@ pub struct DiscoveryResponse {
 
 impl DiscoveryResponse {
     pub fn get_schema() -> serde_json::Result<serde_json::Value> {
-        FinancialHistoryConfig::clean_schema(schemars::schema_for!(DiscoveryResponse))
+        Ok(Self::schema().to_json())
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Instructor)]
 pub struct BalanceSheetExtractionResponse {
     pub balance_sheet: Vec<BalanceSheetAccount>,
 }
 
 impl BalanceSheetExtractionResponse {
     pub fn get_schema() -> serde_json::Result<serde_json::Value> {
-        FinancialHistoryConfig::clean_schema(schemars::schema_for!(BalanceSheetExtractionResponse))
+        Ok(Self::schema().to_json())
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Instructor)]
 pub struct IncomeStatementExtractionResponse {
     pub income_statement: Vec<IncomeStatementAccount>,
 }
 
 impl IncomeStatementExtractionResponse {
     pub fn get_schema() -> serde_json::Result<serde_json::Value> {
-        FinancialHistoryConfig::clean_schema(schemars::schema_for!(
-            IncomeStatementExtractionResponse
-        ))
+        Ok(Self::schema().to_json())
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Instructor)]
+#[llm(validate = "validate_financial_history_config")]
 pub struct FinancialHistoryConfig {
-    #[schemars(description = "The legal name of the organization/business")]
+    #[llm(description = "The legal name of the organization/business")]
     pub organization_name: String,
 
-    #[schemars(
+    #[llm(
         description = "The month when the fiscal year ends (1 = January, 12 = December). For calendar year companies, use 12. For July-June fiscal year, use 6."
     )]
     pub fiscal_year_end_month: u32,
 
-    #[schemars(
+    #[llm(
         description = "Array of Balance Sheet accounts (Assets, Liabilities, Equity) with their snapshots"
     )]
     pub balance_sheet: Vec<BalanceSheetAccount>,
 
-    #[schemars(
+    #[llm(
         description = "Array of Income Statement accounts (Revenue, Expenses) with their period constraints"
     )]
     pub income_statement: Vec<IncomeStatementAccount>,
 }
 
 impl FinancialHistoryConfig {
-    pub fn generate_json_schema() -> schemars::Schema {
-        schemars::schema_for!(FinancialHistoryConfig)
-    }
-
-    /// Generates a Gemini-compatible schema.
-    /// This performs deep cleaning to remove fields Gemini dislikes ($ref, type arrays, additionalProperties).
     pub fn get_gemini_response_schema() -> serde_json::Result<serde_json::Value> {
-        Self::clean_schema(Self::generate_json_schema())
-    }
-
-    /// Returns the raw schemars schema as JSON value (no pre-processing)
-    pub fn clean_schema(root: schemars::Schema) -> serde_json::Result<serde_json::Value> {
-        serde_json::to_value(root)
+        Ok(Self::schema().to_json())
     }
 
     pub fn schema_as_json() -> serde_json::Result<String> {
-        let schema = Self::generate_json_schema();
-        serde_json::to_string_pretty(&schema)
+        serde_json::to_string_pretty(&Self::schema().to_json())
     }
 
     pub fn schema_as_json_value() -> serde_json::Result<serde_json::Value> {
-        let schema = Self::generate_json_schema();
-        serde_json::to_value(schema)
+        Ok(Self::schema().to_json())
+    }
+}
+
+fn validate_financial_history_config(cfg: &FinancialHistoryConfig) -> rstructor::Result<()> {
+    for acc in &cfg.balance_sheet {
+        for (i, snap) in acc.snapshots.iter().enumerate() {
+            if snap.source.is_none() {
+                return Err(RStructorError::ValidationError(format!(
+                    "Balance Sheet '{}' snapshot #{} missing `source`.",
+                    acc.name, i
+                )));
+            }
+        }
+    }
+    for acc in &cfg.income_statement {
+        for (i, cons) in acc.constraints.iter().enumerate() {
+            if cons.source.is_none() {
+                return Err(RStructorError::ValidationError(format!(
+                    "Income Statement '{}' constraint #{} missing `source`.",
+                    acc.name, i
+                )));
+            }
+        }
+    }
+
+    let mut seen_bs = HashSet::new();
+    for acc in &cfg.balance_sheet {
+        if !seen_bs.insert(&acc.name) {
+            return Err(RStructorError::ValidationError(format!(
+                "Duplicate Balance Sheet account detected: '{}'. Account names must be unique.",
+                acc.name
+            )));
+        }
+    }
+
+    let mut seen_is = HashSet::new();
+    for acc in &cfg.income_statement {
+        if !seen_is.insert(&acc.name) {
+            return Err(RStructorError::ValidationError(format!(
+                "Duplicate Income Statement account detected: '{}'. Account names must be unique.",
+                acc.name
+            )));
+        }
+    }
+
+    match process_financial_history(cfg) {
+        Ok(dense) => match verify_accounting_equation(cfg, &dense, 1.0) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(RStructorError::ValidationError(format!(
+                "Accounting Equation Violation: {}",
+                e
+            ))),
+        },
+        Err(e) => Err(RStructorError::ValidationError(format!(
+            "Processing Engine Error: {}",
+            e
+        ))),
     }
 }
 

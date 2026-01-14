@@ -1,16 +1,15 @@
-use gemini_rust::FileHandle;
-use gemini_structured_output::StructuredClient;
+use rstructor::{GeminiClient, LLMClient};
 
 use crate::error::Result;
-use crate::llm::types::MarkdownResponse;
-use crate::llm::utils::build_prompt_parts;
+use crate::llm::types::{DocumentReference, MarkdownResponse};
+use crate::llm::utils::document_media;
 
 pub struct DocumentAssistant {
-    client: StructuredClient,
+    client: GeminiClient,
 }
 
 impl DocumentAssistant {
-    pub fn new(client: StructuredClient) -> Self {
+    pub fn new(client: GeminiClient) -> Self {
         Self { client }
     }
 
@@ -19,16 +18,17 @@ impl DocumentAssistant {
     /// # Arguments
     /// * `prompt` - The user's question or instruction
     /// * `documents` - Gemini file handles to include as context
-    pub async fn ask(&self, prompt: &str, documents: &[FileHandle]) -> Result<String> {
-        let parts = build_prompt_parts(prompt, documents)?;
-        let outcome = self
+    pub async fn ask(&self, prompt: &str, documents: &[DocumentReference]) -> Result<String> {
+        let media = document_media(documents);
+        let full_prompt = format!(
+            "You are a helpful assistant analyzing the provided documents.\n\n{}",
+            prompt
+        );
+        let response: MarkdownResponse = self
             .client
-            .request::<MarkdownResponse>()
-            .system("You are a helpful assistant analyzing the provided documents.")
-            .user_parts(parts)
-            .execute()
+            .materialize_with_media(&full_prompt, &media)
             .await?;
 
-        Ok(outcome.value.markdown)
+        Ok(response.markdown)
     }
 }

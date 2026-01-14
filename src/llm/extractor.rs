@@ -1,31 +1,32 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use futures::future::{try_join, try_join_all};
-use gemini_rust::FileHandle;
-use gemini_structured_output::StructuredClient;
+use rstructor::{GeminiClient, LLMClient};
+use serde_json;
 use tokio::sync::mpsc::Sender;
 
 use crate::error::{FinancialHistoryError, Result};
 use crate::llm::{prompts, types::ExtractionEvent};
-use crate::llm::utils::{build_prompt_parts, create_document_manifest};
+use crate::llm::types::DocumentReference;
+use crate::llm::utils::{create_document_manifest, document_media};
 use crate::schema::{
     AccountType, BalanceSheetAccount, BalanceSheetExtractionResponse, DiscoveryResponse,
     FinancialHistoryConfig, IncomeStatementAccount, IncomeStatementExtractionResponse,
 };
-use crate::{process_financial_history, verify_accounting_equation};
+use crate::process_financial_history;
 
 pub struct FinancialExtractor {
-    client: StructuredClient,
+    client: GeminiClient,
 }
 
 impl FinancialExtractor {
-    pub fn new(client: StructuredClient) -> Self {
+    pub fn new(client: GeminiClient) -> Self {
         Self { client }
     }
 
     pub async fn extract(
         &self,
-        documents: &[FileHandle],
+        documents: &[DocumentReference],
         progress: Option<Sender<ExtractionEvent>>,
     ) -> Result<FinancialHistoryConfig> {
         self.send_event(&progress, ExtractionEvent::Starting).await;
@@ -99,7 +100,7 @@ impl FinancialExtractor {
     pub async fn refine_history(
         &self,
         config: FinancialHistoryConfig,
-        documents: &[FileHandle],
+        documents: &[DocumentReference],
         instruction: &str,
         progress: Option<Sender<ExtractionEvent>>,
     ) -> Result<FinancialHistoryConfig> {
@@ -112,55 +113,38 @@ impl FinancialExtractor {
         .await;
 
         let (manifest, id_map) = create_document_manifest(documents);
-        let manifest_context = manifest.clone();
-        let outcome = self
+        let prompt = build_refinement_prompt(&config, instruction, &manifest)?;
+        let media = document_media(documents);
+        let mut refined: FinancialHistoryConfig = self
             .client
-            .refine(config, instruction)
-            .with_documents(documents.to_vec())
-            .with_context_generator(move |cfg| {
-                let mut context = String::new();
-                context.push_str(&manifest_context);
-                context.push_str("\n## CURRENT DATA TABLES\n");
-                context.push_str(&generate_markdown_tables(cfg));
-                if let Some(warnings) = detect_suspicious_duplicates(cfg) {
-                    context.push_str("\n## WARNINGS\n");
-                    context.push_str(&warnings);
-                }
-                context
-            })
-            .with_validator(|cfg| validate_financial_logic(cfg).err())
-            .execute()
+            .materialize_with_media(&prompt, &media)
             .await?;
-
-        let mut refined = outcome.value;
         resolve_document_ids(&mut refined, &id_map);
         Ok(refined)
     }
 
     async fn run_discovery(
         &self,
-        docs: &[FileHandle],
+        docs: &[DocumentReference],
         manifest: &str,
     ) -> Result<DiscoveryResponse> {
         let prompt = format!(
             "{}\n\n## TASK\nAnalyze the attached documents and complete the discovery response.",
             manifest
         );
-        let parts = build_prompt_parts(&prompt, docs)?;
-        let outcome = self
+        let media = document_media(docs);
+        let full_prompt = format!("{}\n\n{}", prompts::SYSTEM_PROMPT_DISCOVERY, prompt);
+        let discovery: DiscoveryResponse = self
             .client
-            .request::<DiscoveryResponse>()
-            .system(prompts::SYSTEM_PROMPT_DISCOVERY)
-            .user_parts(parts)
-            .execute()
+            .materialize_with_media(&full_prompt, &media)
             .await?;
 
-        Ok(outcome.value)
+        Ok(discovery)
     }
 
     async fn extract_balance_sheet(
         &self,
-        docs: &[FileHandle],
+        docs: &[DocumentReference],
         manifest: &str,
         org_ctx: &str,
         accounts: &[String],
@@ -209,15 +193,14 @@ impl FinancialExtractor {
                         account_list
                     );
 
-                    let parts = build_prompt_parts(&prompt, &docs)?;
-                    let outcome = client
-                        .request::<BalanceSheetExtractionResponse>()
-                        .system(prompts::SYSTEM_PROMPT_BS_EXTRACT)
-                        .user_parts(parts)
-                        .execute()
+                    let media = document_media(&docs);
+                    let full_prompt =
+                        format!("{}\n\n{}", prompts::SYSTEM_PROMPT_BS_EXTRACT, prompt);
+                    let outcome: BalanceSheetExtractionResponse = client
+                        .materialize_with_media(&full_prompt, &media)
                         .await?;
 
-                    Ok::<Vec<BalanceSheetAccount>, FinancialHistoryError>(outcome.value.balance_sheet)
+                    Ok::<Vec<BalanceSheetAccount>, FinancialHistoryError>(outcome.balance_sheet)
                 }
             });
 
@@ -230,7 +213,7 @@ impl FinancialExtractor {
 
     async fn extract_income_statement(
         &self,
-        docs: &[FileHandle],
+        docs: &[DocumentReference],
         manifest: &str,
         org_ctx: &str,
         accounts: &[String],
@@ -280,15 +263,16 @@ impl FinancialExtractor {
                         account_list
                     );
 
-                    let parts = build_prompt_parts(&prompt, &docs)?;
-                    let outcome = client
-                        .request::<IncomeStatementExtractionResponse>()
-                        .system(prompts::SYSTEM_PROMPT_IS_EXTRACT)
-                        .user_parts(parts)
-                        .execute()
+                    let media = document_media(&docs);
+                    let full_prompt =
+                        format!("{}\n\n{}", prompts::SYSTEM_PROMPT_IS_EXTRACT, prompt);
+                    let outcome: IncomeStatementExtractionResponse = client
+                        .materialize_with_media(&full_prompt, &media)
                         .await?;
 
-                    Ok::<Vec<IncomeStatementAccount>, FinancialHistoryError>(outcome.value.income_statement)
+                    Ok::<Vec<IncomeStatementAccount>, FinancialHistoryError>(
+                        outcome.income_statement,
+                    )
                 }
             });
 
@@ -302,34 +286,23 @@ impl FinancialExtractor {
     async fn validate_and_fix(
         &self,
         config: FinancialHistoryConfig,
-        documents: &[FileHandle],
+        documents: &[DocumentReference],
         progress: &Option<Sender<ExtractionEvent>>,
     ) -> Result<FinancialHistoryConfig> {
         self.send_event(progress, ExtractionEvent::Validating { attempt: 1 })
             .await;
 
         let (manifest, id_map) = create_document_manifest(documents);
-        let manifest_context = manifest.clone();
-        let outcome = self
+        let prompt = build_refinement_prompt(
+            &config,
+            "Fix any issues so the configuration is valid and the accounting equation balances.",
+            &manifest,
+        )?;
+        let media = document_media(documents);
+        let mut fixed: FinancialHistoryConfig = self
             .client
-            .refine(config, "Fix any issues so the configuration is valid and the accounting equation balances.")
-            .with_documents(documents.to_vec())
-            .with_context_generator(move |cfg| {
-                let mut context = String::new();
-                context.push_str(&manifest_context);
-                context.push_str("\n## CURRENT DATA TABLES\n");
-                context.push_str(&generate_markdown_tables(cfg));
-                if let Some(warnings) = detect_suspicious_duplicates(cfg) {
-                    context.push_str("\n## WARNINGS\n");
-                    context.push_str(&warnings);
-                }
-                context
-            })
-            .with_validator(|cfg| validate_financial_logic(cfg).err())
-            .execute()
+            .materialize_with_media(&prompt, &media)
             .await?;
-
-        let mut fixed = outcome.value;
         resolve_document_ids(&mut fixed, &id_map);
         Ok(fixed)
     }
@@ -378,6 +351,31 @@ fn resolve_document_ids(config: &mut FinancialHistoryConfig, id_map: &HashMap<St
             }
         }
     }
+}
+
+fn build_refinement_prompt(
+    config: &FinancialHistoryConfig,
+    instruction: &str,
+    manifest: &str,
+) -> Result<String> {
+    let mut context = String::new();
+    context.push_str(manifest);
+    context.push_str("\n## CURRENT DATA TABLES\n");
+    context.push_str(&generate_markdown_tables(config));
+    if let Some(warnings) = detect_suspicious_duplicates(config) {
+        context.push_str("\n## WARNINGS\n");
+        context.push_str(&warnings);
+    }
+
+    let config_json = serde_json::to_string_pretty(config)?;
+    Ok(format!(
+        "You are a senior financial analyst refining an extracted financial history configuration.\n\
+         Follow the instruction, keep the schema intact, and ensure the accounting equation balances.\n\n\
+         ## INSTRUCTION\n{instruction}\n\n\
+         ## CURRENT CONFIG\n```json\n{config_json}\n```\n\n\
+         {context}\n\n\
+         Return the updated configuration as JSON."
+    ))
 }
 
 fn generate_markdown_tables(config: &FinancialHistoryConfig) -> String {
@@ -475,57 +473,6 @@ fn render_dense_table(
     }
 
     Some(rows.join("\n"))
-}
-
-fn validate_financial_logic(cfg: &FinancialHistoryConfig) -> std::result::Result<(), String> {
-    for acc in &cfg.balance_sheet {
-        for (i, snap) in acc.snapshots.iter().enumerate() {
-            if snap.source.is_none() {
-                return Err(format!(
-                    "Balance Sheet '{}' snapshot #{} missing `source`.",
-                    acc.name, i
-                ));
-            }
-        }
-    }
-    for acc in &cfg.income_statement {
-        for (i, cons) in acc.constraints.iter().enumerate() {
-            if cons.source.is_none() {
-                return Err(format!(
-                    "Income Statement '{}' constraint #{} missing `source`.",
-                    acc.name, i
-                ));
-            }
-        }
-    }
-
-    let mut seen_bs = HashSet::new();
-    for acc in &cfg.balance_sheet {
-        if !seen_bs.insert(&acc.name) {
-            return Err(format!(
-                "Duplicate Balance Sheet account detected: '{}'. Account names must be unique.",
-                acc.name
-            ));
-        }
-    }
-
-    let mut seen_is = HashSet::new();
-    for acc in &cfg.income_statement {
-        if !seen_is.insert(&acc.name) {
-            return Err(format!(
-                "Duplicate Income Statement account detected: '{}'. Account names must be unique.",
-                acc.name
-            ));
-        }
-    }
-
-    match process_financial_history(cfg) {
-        Ok(dense) => match verify_accounting_equation(cfg, &dense, 1.0) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(format!("Accounting Equation Violation: {}", e)),
-        },
-        Err(e) => Err(format!("Processing Engine Error: {}", e)),
-    }
 }
 
 fn detect_suspicious_duplicates(cfg: &FinancialHistoryConfig) -> Option<String> {
