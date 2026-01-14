@@ -1,39 +1,16 @@
 use dotenv::dotenv;
-use financial_history_builder::llm::{DocumentReference, ExtractionEvent, FinancialExtractor};
+use financial_history_builder::llm::{ExtractionEvent, FinancialExtractor};
 use financial_history_builder::{
     process_financial_history, verify_accounting_equation, AccountType, DenseSeries,
     FinancialHistoryConfig,
 };
-use rstructor::{GeminiClient, GeminiModel, MediaFile};
+use futures::future;
+use gemini_structured_output::prelude::{Model, StructuredClientBuilder};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
+use std::path::{Path, PathBuf};
+use tokio::fs;
 use tokio::sync::mpsc;
-
-fn load_documents() -> Result<Vec<DocumentReference>, Box<dyn Error>> {
-    let uris = std::env::var("GEMINI_FILE_URIS")?;
-    let names = std::env::var("GEMINI_FILE_NAMES").ok();
-    let name_list: Vec<String> = names
-        .map(|value| value.split(',').map(|s| s.trim().to_string()).collect())
-        .unwrap_or_default();
-
-    let documents = uris
-        .split(',')
-        .enumerate()
-        .map(|(index, uri)| {
-            let name = name_list
-                .get(index)
-                .cloned()
-                .unwrap_or_else(|| format!("Document {}", index + 1));
-            DocumentReference::new(MediaFile::new(uri.trim(), "application/pdf"), name)
-        })
-        .collect::<Vec<_>>();
-
-    if documents.is_empty() {
-        return Err("GEMINI_FILE_URIS must include at least one URI".into());
-    }
-
-    Ok(documents)
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -42,18 +19,70 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("🚀 Starting Observable Agentic Financial Extraction Workflow...\n");
 
-    let client = GeminiClient::new(api_key)?.model(GeminiModel::Gemini25Flash);
+    let doc_dir = Path::new("examples").join("documents");
+    if !doc_dir.exists() {
+        fs::create_dir_all(&doc_dir).await?;
+        println!("⚠️  Created 'examples/documents'. Please place a PDF there.");
+        return Ok(());
+    }
+
+    let mut dir_stream = fs::read_dir(&doc_dir).await?;
+    let mut pdf_paths: Vec<PathBuf> = Vec::new();
+    while let Ok(Some(entry)) = dir_stream.next_entry().await {
+        let path = entry.path();
+        if path.extension().is_some_and(|ext| ext == "pdf") {
+            pdf_paths.push(path);
+        }
+    }
+
+    if pdf_paths.is_empty() {
+        println!("⚠️  No PDF files found in {:?}.", doc_dir);
+        return Ok(());
+    }
+
+    println!("📄 Processing PDFs:");
+    for p in &pdf_paths {
+        println!("   - {:?}", p.file_name().unwrap());
+    }
+    println!();
+
+    let client = StructuredClientBuilder::new(api_key)
+        .with_model(Model::Gemini25Flash)
+        .build()?;
     let extractor = FinancialExtractor::new(client.clone());
 
-    let documents = load_documents()?;
-    println!("✅ Loaded {} document URIs.\n", documents.len());
+    println!("☁️  Uploading documents to Gemini in parallel...");
+    let upload_futures: Vec<_> = pdf_paths
+        .iter()
+        .map(|path| client.file_manager.upload_and_wait(path))
+        .collect();
 
+    let documents = future::try_join_all(upload_futures).await?;
+
+    for doc in &documents {
+        let meta = doc.get_file_meta();
+        println!(
+            "   ✅ Uploaded: {} ({})",
+            meta.display_name.as_deref().unwrap_or(doc.name()),
+            meta.state
+                .as_ref()
+                .map(|s| format!("{s:?}"))
+                .unwrap_or_else(|| "UNKNOWN".to_string())
+        );
+    }
+    println!();
+
+    // Create a channel for observability
     let (tx, mut rx) = mpsc::channel(32);
+
+    // Clone documents before moving into the extraction closure
     let extraction_docs = documents.clone();
 
+    // Spawn the extraction in a separate task
     let extraction_handle =
         tokio::spawn(async move { extractor.extract(&extraction_docs, Some(tx)).await });
 
+    // Poll the channel and print real-time updates
     tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
             match event {
@@ -99,6 +128,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
+    // Await the extraction result
     let mut config = extraction_handle.await??;
 
     println!("\n✅ Initial Extraction Complete:");
@@ -110,6 +140,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         config.income_statement.len()
     );
 
+    // DEMONSTRATION: Interactive Refinement Workflow
     println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!("🔧 REFINEMENT WORKFLOW DEMONSTRATION");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -121,46 +152,283 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("  • 'Update the Cash balance for December 2023 to $85,000'");
     println!("  • 'Change the seasonality profile for Sales to RetailPeak'");
 
-    println!("\n🧠 Running validation and integrity checks...");
-    let dense = process_financial_history(&config)?;
-    verify_accounting_equation(&config, &dense, 1.0)?;
+    // Optional: Uncomment to enable interactive refinement
+    // print!("\n💬 Enter a refinement instruction (or press Enter to skip): ");
+    // std::io::Write::flush(&mut std::io::stdout())?;
+    // let mut user_instruction = String::new();
+    // std::io::stdin().read_line(&mut user_instruction)?;
+    // let user_instruction = user_instruction.trim();
 
-    if let Some(sample) = config.balance_sheet.first() {
-        let account_name = &sample.name;
-        let series: &DenseSeries = dense
-            .get(account_name)
-            .expect("Expected dense series for sample account");
-        let mut months: BTreeSet<_> = series.keys().cloned().collect();
-        months.iter().take(3).for_each(|date| {
-            if let Some(point) = series.get(date) {
-                println!("{} {}: {:.2}", account_name, date, point.value);
+    // For this demo, we'll use a hardcoded example instruction
+    let demo_instruction = "Review all balance sheet and income statement accounts. \
+                            If you notice any data quality issues, unusual values, or \
+                            potential improvements, make the necessary corrections.";
+
+    println!("\n📝 Demo Instruction: \"{}\"", demo_instruction);
+    println!("\n🔄 Running refinement workflow...\n");
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // IMPORTANT: Document Handling in Refinement
+    // ═══════════════════════════════════════════════════════════════════════════
+    // You have multiple options for which documents to pass to refine_history():
+    //
+    // 1. REUSE ORIGINAL DOCUMENTS (most common):
+    //    Pass the same documents used during extraction
+    let refine_docs = documents.clone();
+
+    // 2. ADD SUPPLEMENTARY DOCUMENTS (for additional context):
+    //    Upload new PDFs that provide extra information for refinement
+    //    Example (commented out):
+    //    let supplementary_path = Path::new("examples/documents/updated_forecast.pdf");
+    //    if supplementary_path.exists() {
+    //        let supplementary_doc = client.file_manager.upload_and_wait(supplementary_path).await?;
+    //        let mut combined_docs = documents.clone();
+    //        combined_docs.push(supplementary_doc);
+    //        refine_docs = combined_docs;
+    //    }
+    //
+    // 3. USE ENTIRELY DIFFERENT DOCUMENTS (for major revisions):
+    //    Upload and use completely new set of documents
+    //    Example (commented out):
+    //    let new_doc_path = Path::new("examples/documents/corrected_financials.pdf");
+    //    let new_doc = client.file_manager.upload_and_wait(new_doc_path).await?;
+    //    refine_docs = vec![new_doc];
+    //
+    // The LLM will have access to ALL provided documents when generating patches.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Create a new channel for refinement progress
+    let (refine_tx, mut refine_rx) = mpsc::channel(32);
+
+    // Clone necessary values for the refinement task
+    let refine_extractor =
+        FinancialExtractor::new(client.clone());
+    let refine_instruction = demo_instruction.to_string();
+    let refine_config = config.clone();
+
+    // Spawn refinement in separate task
+    let refinement_handle = tokio::spawn(async move {
+        refine_extractor
+            .refine_history(refine_config, &refine_docs, &refine_instruction, Some(refine_tx))
+            .await
+    });
+
+    // Monitor refinement progress
+    tokio::spawn(async move {
+        while let Some(event) = refine_rx.recv().await {
+            match event {
+                ExtractionEvent::Validating { attempt } => {
+                    println!(
+                        "🔍 Analyzing and applying refinements (Attempt {})...",
+                        attempt
+                    );
+                }
+                ExtractionEvent::CorrectionNeeded { reason } => {
+                    println!("⚙️  {}", reason);
+                }
+                _ => {}
             }
-        });
+        }
+    });
+
+    // Await refinement result
+    match refinement_handle.await? {
+        Ok(refined_config) => {
+            println!("\n✅ Refinement Complete!");
+            config = refined_config;
+        }
+        Err(e) => {
+            println!("\n⚠️  Refinement encountered an issue: {}", e);
+            println!("   Continuing with original configuration...");
+        }
     }
 
-    // Demonstrate override application
-    let mut overrides = financial_history_builder::FinancialHistoryOverrides::default();
-    if let Some(first_account) = config.balance_sheet.first() {
-        overrides.modifications.push(financial_history_builder::AccountModification::Rename {
-            target: first_account.name.clone(),
-            new_name: format!("{} (Reviewed)", first_account.name),
-        });
-    }
-    config = overrides.apply(&config);
+    println!("\n⚙️  Running Densification Engine...");
+    let dense_data = process_financial_history(&config)?;
 
-    let dense_after = process_financial_history(&config)?;
-    let _recheck = verify_accounting_equation(&config, &dense_after, 1.0)?;
-
-    println!("\n✅ Overrides applied and validated.");
-
-    let mut grouped: BTreeMap<AccountType, Vec<String>> = BTreeMap::new();
-    for acc in &config.balance_sheet {
-        grouped.entry(acc.account_type.clone()).or_default().push(acc.name.clone());
+    if let Some(pl_table) =
+        render_dense_table_from_data(&collect_income_accounts(&config), &dense_data)
+    {
+        println!("\n📊 P/L (dense, dates on x-axis):\n{}", pl_table);
     }
-    println!("\nBalance Sheet Account Grouping:");
-    for (acc_type, names) in grouped {
-        println!("  {:?}: {} accounts", acc_type, names.len());
+    if let Some(bs_table) =
+        render_dense_table_from_data(&collect_balance_accounts(&config), &dense_data)
+    {
+        println!("\n📊 Balance Sheet (dense, dates on x-axis):\n{}", bs_table);
     }
+
+    // Print detailed audit trail for the first Revenue or income account
+    if let Some((name, series)) = dense_data
+        .iter()
+        .find(|(k, _)| config.income_statement.iter().any(|a| &a.name == *k))
+    {
+        println!("\n🔍 DETAILED AUDIT TRAIL for '{}':", name);
+        println!("   (Showing first 6 months for brevity)\n");
+        for (i, (date, point)) in series.iter().enumerate() {
+            if i >= 6 {
+                break;
+            }
+            println!("  📅 {}: ${:.2}", date, point.value);
+            println!("     Origin: {:?}", point.origin);
+            if let Some(src) = &point.source {
+                println!("     Source Doc: {}", src.document_name);
+                if let Some(txt) = &src.original_text {
+                    println!("     Context: \"{}\"", txt);
+                }
+            }
+            if let Some(total) = point.derivation.original_period_value {
+                println!(
+                    "     Calculation: {} (Derived from total ${:.2} covering {} to {})",
+                    point.derivation.logic,
+                    total,
+                    point.derivation.period_start.unwrap(),
+                    point.derivation.period_end.unwrap()
+                );
+            } else {
+                println!("     Calculation: {}", point.derivation.logic);
+            }
+            println!("     ------------------------------------------------");
+        }
+        println!(
+            "   (... {} more months in full dataset)",
+            series.len().saturating_sub(6)
+        );
+    }
+
+    match verify_accounting_equation(&config, &dense_data, 1.0) {
+        Ok(_) => println!("\n✅ Accounting Equation Holds (Assets == Liab + Equity)"),
+        Err(e) => println!("\n⚠️  Balance Warning: {}", e),
+    }
+
+    let config_file = "extracted_config.json";
+    let json = serde_json::to_string_pretty(&config)?;
+    std::fs::write(config_file, json)?;
+    println!("\n💾 Saved configuration to: {}", config_file);
+
+    let base_name = pdf_paths
+        .first()
+        .and_then(|p| p.file_stem().and_then(|s| s.to_str()))
+        .unwrap_or("financial_history");
+
+    let pl_accounts = collect_income_accounts(&config);
+    let bs_accounts = collect_balance_accounts(&config);
+
+    let pl_filename = format!("{}_pl.csv", base_name);
+    export_to_csv_transposed(&pl_accounts, &dense_data, &pl_filename).await?;
+    println!("💾 Saved P/L to: {}", pl_filename);
+
+    let bs_filename = format!("{}_balance_sheet.csv", base_name);
+    export_to_csv_transposed(&bs_accounts, &dense_data, &bs_filename).await?;
+    println!("💾 Saved Balance Sheet to: {}", bs_filename);
 
     Ok(())
+}
+
+async fn export_to_csv_transposed(
+    accounts: &[(String, AccountType)],
+    dense_data: &BTreeMap<String, DenseSeries>,
+    filename: &str,
+) -> Result<(), Box<dyn Error>> {
+    let mut dates = BTreeSet::new();
+    for (name, _) in accounts {
+        if let Some(series) = dense_data.get(name) {
+            for d in series.keys() {
+                dates.insert(*d);
+            }
+        }
+    }
+
+    if dates.is_empty() {
+        return Ok(());
+    }
+
+    let mut csv_out = String::new();
+
+    csv_out.push_str("Account");
+    for date in &dates {
+        csv_out.push_str(&format!(",{}", date));
+    }
+    csv_out.push('\n');
+
+    for (name, _) in accounts {
+        csv_out.push_str(name);
+        if let Some(series) = dense_data.get(name) {
+            for date in &dates {
+                let val = series.get(date).map(|p| p.value).unwrap_or(0.0);
+                csv_out.push_str(&format!(",{:.2}", val));
+            }
+        } else {
+            for _ in &dates {
+                csv_out.push_str(",0.00");
+            }
+        }
+        csv_out.push('\n');
+    }
+
+    fs::write(filename, csv_out).await?;
+    Ok(())
+}
+
+fn render_dense_table_from_data(
+    accounts: &[(String, AccountType)],
+    dense_data: &BTreeMap<String, DenseSeries>,
+) -> Option<String> {
+    let mut dates = BTreeSet::new();
+    for (name, _) in accounts {
+        if let Some(series) = dense_data.get(name) {
+            for d in series.keys() {
+                dates.insert(*d);
+            }
+        }
+    }
+    if dates.is_empty() {
+        return None;
+    }
+
+    let mut rows = Vec::new();
+    let mut header = String::from("| Account |");
+    for d in &dates {
+        header.push_str(&format!(" {} |", d));
+    }
+    rows.push(header);
+
+    let mut sep = String::from("| --- |");
+    for _ in &dates {
+        sep.push_str(" --- |");
+    }
+    rows.push(sep);
+
+    for (name, _ty) in accounts {
+        let mut row = format!("| {} |", name);
+        if let Some(series) = dense_data.get(name) {
+            for d in &dates {
+                let val = series
+                    .get(d)
+                    .map(|p| format!("{:.2}", p.value))
+                    .unwrap_or_default();
+                row.push_str(&format!(" {} |", val));
+            }
+        } else {
+            for _ in &dates {
+                row.push_str("  |");
+            }
+        }
+        rows.push(row);
+    }
+
+    Some(rows.join("\n"))
+}
+
+fn collect_income_accounts(cfg: &FinancialHistoryConfig) -> Vec<(String, AccountType)> {
+    cfg.income_statement
+        .iter()
+        .map(|a| (a.name.clone(), a.account_type.clone()))
+        .collect()
+}
+
+fn collect_balance_accounts(cfg: &FinancialHistoryConfig) -> Vec<(String, AccountType)> {
+    cfg.balance_sheet
+        .iter()
+        .map(|a| (a.name.clone(), a.account_type.clone()))
+        .collect()
 }

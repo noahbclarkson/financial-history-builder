@@ -1,9 +1,9 @@
-use rstructor::{GeminiClient, LLMClient};
+use gemini_rust::FileHandle;
+use gemini_structured_output::StructuredClient;
 use log::info;
 
 use crate::error::Result;
-use crate::llm::types::DocumentReference;
-use crate::llm::utils::document_media;
+use crate::llm::utils::build_prompt_parts;
 use crate::overrides::FinancialHistoryOverrides;
 use crate::schema::FinancialHistoryConfig;
 
@@ -68,11 +68,11 @@ const FORECASTING_EXAMPLE: &str = r#"
 "#;
 
 pub struct ForecastingSetupAgent {
-    client: GeminiClient,
+    client: StructuredClient,
 }
 
 impl ForecastingSetupAgent {
-    pub fn new(client: GeminiClient) -> Self {
+    pub fn new(client: StructuredClient) -> Self {
         Self { client }
     }
 
@@ -80,7 +80,7 @@ impl ForecastingSetupAgent {
     pub async fn generate_overrides(
         &self,
         current_config: &FinancialHistoryConfig,
-        documents: &[DocumentReference],
+        documents: &[FileHandle],
         user_instruction: Option<&str>,
     ) -> Result<FinancialHistoryOverrides> {
         info!("Forecasting Agent: Step 1 - Generating Draft Overrides...");
@@ -99,7 +99,7 @@ impl ForecastingSetupAgent {
     async fn generate_draft_overrides(
         &self,
         current_config: &FinancialHistoryConfig,
-        documents: &[DocumentReference],
+        documents: &[FileHandle],
         user_instruction: Option<&str>,
     ) -> Result<FinancialHistoryOverrides> {
         let current_state = serde_json::to_string_pretty(current_config)?;
@@ -207,21 +207,23 @@ Return a valid JSON object matching the `FinancialHistoryOverrides` schema.
             user_instruction.unwrap_or("Clean up fixed assets and ensure all standard trading accounts exist.")
         );
 
-        let media = document_media(documents);
-        let full_prompt = format!("{system_prompt}\n\n{user_prompt}");
-        let overrides: FinancialHistoryOverrides = self
+        let parts = build_prompt_parts(&user_prompt, documents)?;
+        let outcome = self
             .client
-            .materialize_with_media(&full_prompt, &media)
+            .request::<FinancialHistoryOverrides>()
+            .system(system_prompt)
+            .user_parts(parts)
+            .execute()
             .await?;
 
-        Ok(overrides)
+        Ok(outcome.value)
     }
 
     async fn review_and_refine(
         &self,
         raw_config: &FinancialHistoryConfig,
         draft: &FinancialHistoryOverrides,
-        documents: &[DocumentReference],
+        documents: &[FileHandle],
         user_instruction: Option<&str>,
     ) -> Result<FinancialHistoryOverrides> {
         let raw_json = serde_json::to_string_pretty(raw_config)?;
@@ -248,13 +250,15 @@ Return the final overrides as JSON matching the FinancialHistoryOverrides schema
             user_instruction.unwrap_or("No additional instructions.")
         );
 
-        let media = document_media(documents);
-        let full_prompt = format!("{system_prompt}\n\n{user_prompt}");
-        let overrides: FinancialHistoryOverrides = self
+        let parts = build_prompt_parts(&user_prompt, documents)?;
+        let outcome = self
             .client
-            .materialize_with_media(&full_prompt, &media)
+            .request::<FinancialHistoryOverrides>()
+            .system(system_prompt)
+            .user_parts(parts)
+            .execute()
             .await?;
 
-        Ok(overrides)
+        Ok(outcome.value)
     }
 }
