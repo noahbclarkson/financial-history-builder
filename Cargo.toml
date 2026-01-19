@@ -19,7 +19,7 @@ log = "0.4"
 futures = "0.3"
 tokio = { version = "1.49", features = ["full"] }
 gemini-structured-output = { git = "https://github.com/noahbclarkson/gemini-structured-output" }
-gemini-rust = { git = "https://github.com/flachesis/gemini-rust" }
+gemini-rust = { git = "https://github.com/noahbclarkson/gemini-rust", branch = "add-json-response-schema" }
 
 [dev-dependencies]
 anyhow = "1.0"
